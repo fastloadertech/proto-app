@@ -9,11 +9,13 @@ class PriceSummary extends StatelessWidget {
     required this.subtotal,
     required this.deliveryFee,
     this.savings = 0,
+    this.discount = 0,
     this.title = 'Price breakdown',
   });
   final double subtotal;
   final double deliveryFee;
   final double savings;
+  final double discount;
   final String title;
 
   @override
@@ -47,13 +49,21 @@ class PriceSummary extends StatelessWidget {
             accent: true,
           ),
         ],
+        if (discount > 0) ...[
+          const SizedBox(height: 14),
+          _PriceRow(
+            label: 'Coupon discount',
+            value: '−${formatPrice(discount)}',
+            accent: true,
+          ),
+        ],
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 17),
           child: Divider(height: 1),
         ),
         _PriceRow(
           label: 'Total',
-          value: formatPrice(subtotal + deliveryFee),
+          value: formatPrice(subtotal + deliveryFee - discount),
           total: true,
         ),
       ],

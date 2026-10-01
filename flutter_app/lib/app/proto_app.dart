@@ -6,6 +6,7 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/splash_screen.dart';
 import '../features/bag/presentation/bag_screen.dart';
 import '../features/checkout/presentation/checkout_screen.dart';
+import '../features/checkout/presentation/delivery_address_screen.dart';
 import '../features/orders/presentation/orders_screen.dart';
 import 'main_shell.dart';
 
@@ -49,6 +50,7 @@ class _ProtoAppState extends State<ProtoApp> {
           ),
         ),
         '/checkout': (context) => const CheckoutScreen(),
+        '/addresses': (context) => const DeliveryAddressScreen(),
         '/orders': (context) => const OrdersScreen(),
       },
     ),

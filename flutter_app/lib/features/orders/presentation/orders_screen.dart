@@ -13,8 +13,9 @@ class OrdersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final orders = AppScope.of(context).orders.toList()
-      ..sort((first, second) => second.createdAt.compareTo(first.createdAt));
+    // The repository keeps newest orders first, including orders placed in
+    // the same clock tick. Keep that ordering instead of re-sorting ties.
+    final orders = AppScope.of(context).orders;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Your orders')),
@@ -318,10 +319,24 @@ class _OrderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 14),
-                const Icon(
-                  Icons.arrow_forward_rounded,
-                  color: ProtoColors.lime,
-                  size: 21,
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'View details',
+                      style: TextStyle(
+                        color: ProtoColors.lime,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      color: ProtoColors.lime,
+                      size: 21,
+                    ),
+                  ],
                 ),
               ],
             ),

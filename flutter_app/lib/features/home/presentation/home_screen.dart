@@ -187,7 +187,43 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 31),
+                    const SizedBox(height: 13),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 11,
+                      ),
+                      decoration: BoxDecoration(
+                        color: ProtoColors.lime.withValues(alpha: .055),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(
+                          color: ProtoColors.lime.withValues(alpha: .16),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.wifi_off_rounded,
+                            color: ProtoColors.lime,
+                            size: 17,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'LOCAL DEMO · Orders and delivery are simulated',
+                              style: TextStyle(
+                                color: ProtoColors.muted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 27),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [

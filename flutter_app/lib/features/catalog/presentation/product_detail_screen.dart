@@ -4,7 +4,9 @@ import '../../../core/formatters/currency.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_artwork.dart';
+import '../data/local_catalog_repository.dart';
 import '../domain/product.dart';
+import 'product_listing_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
@@ -255,203 +257,265 @@ class _ProductInformation extends StatelessWidget {
   final ValueChanged<String> onFlavorSelected;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        children: [
-          Expanded(
-            child: Text(
-              product.brand.toUpperCase(),
-              style: const TextStyle(
-                color: ProtoColors.lime,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.6,
-              ),
-            ),
-          ),
-          const Icon(Icons.star_rounded, color: Color(0xFFE6C76B), size: 16),
-          const SizedBox(width: 4),
-          Text(
-            product.rating.toStringAsFixed(1),
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            '(${product.reviewCount})',
-            style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      Text(
-        product.name,
-        style: const TextStyle(
-          fontSize: 31,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -1,
-          height: 1.16,
-        ),
-      ),
-      const SizedBox(height: 12),
-      Text(
-        product.subtitle,
-        style: const TextStyle(
-          color: ProtoColors.muted,
-          fontSize: 14,
-          height: 1.5,
-        ),
-      ),
-      const SizedBox(height: 20),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-        decoration: BoxDecoration(
-          color: ProtoColors.lime.withValues(alpha: .07),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: ProtoColors.lime.withValues(alpha: .15)),
-        ),
-        child: const Row(
+  Widget build(BuildContext context) {
+    final category = LocalCatalogRepository.categories
+        .where((item) => item.id == product.categoryId)
+        .firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Icon(Icons.bolt_rounded, color: ProtoColors.lime, size: 20),
-            SizedBox(width: 8),
             Expanded(
               child: Text(
-                'At your door in 12 min',
-                style: TextStyle(
+                product.brand.toUpperCase(),
+                style: const TextStyle(
                   color: ProtoColors.lime,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.6,
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-      if (product.flavors.isNotEmpty) ...[
-        const SizedBox(height: 26),
-        Row(
-          children: [
-            const Text(
-              'Pick your flavour',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            const Icon(Icons.star_rounded, color: Color(0xFFE6C76B), size: 16),
+            const SizedBox(width: 4),
+            Text(
+              product.rating.toStringAsFixed(1),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                flavor ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.end,
-                style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
-              ),
+            const SizedBox(width: 5),
+            Text(
+              '(${product.reviewCount})',
+              style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
             ),
           ],
         ),
         const SizedBox(height: 12),
+        Text(
+          product.name,
+          style: const TextStyle(
+            fontSize: 31,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -1,
+            height: 1.16,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          product.subtitle,
+          style: const TextStyle(
+            color: ProtoColors.muted,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 16),
         Wrap(
           spacing: 8,
           runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            for (final option in product.flavors)
-              ChoiceChip(
-                label: Text(option),
-                selected: option == flavor,
-                onSelected: (_) => onFlavorSelected(option),
-                showCheckmark: false,
+            if (category != null)
+              ActionChip(
+                tooltip: 'Browse ${category.title}',
+                avatar: Icon(category.icon, size: 15, color: ProtoColors.lime),
+                label: Text(category.title),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        ProductListingScreen(categoryId: category.id),
+                  ),
+                ),
                 backgroundColor: ProtoColors.surface,
-                selectedColor: ProtoColors.lime.withValues(alpha: .12),
-                side: BorderSide(
-                  color: option == flavor
-                      ? ProtoColors.lime
-                      : ProtoColors.border,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-                labelStyle: TextStyle(
-                  color: option == flavor
-                      ? ProtoColors.lime
-                      : ProtoColors.muted,
+                side: const BorderSide(color: ProtoColors.border),
+                labelStyle: const TextStyle(
+                  color: ProtoColors.text,
                   fontSize: 11,
-                  fontWeight: FontWeight.w500,
                 ),
               ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: ProtoColors.lime.withValues(alpha: .08),
+                border: Border.all(
+                  color: ProtoColors.lime.withValues(alpha: .25),
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 15,
+                    color: ProtoColors.lime,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Available to order',
+                    style: TextStyle(color: ProtoColors.lime, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-      ],
-      const SizedBox(height: 26),
-      Container(
-        decoration: BoxDecoration(
-          color: ProtoColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: ProtoColors.border),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
-        child: IntrinsicHeight(
-          child: Row(
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          decoration: BoxDecoration(
+            color: ProtoColors.lime.withValues(alpha: .07),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: ProtoColors.lime.withValues(alpha: .15)),
+          ),
+          child: const Row(
             children: [
+              Icon(Icons.bolt_rounded, color: ProtoColors.lime, size: 20),
+              SizedBox(width: 8),
               Expanded(
-                child: _NutritionStat(
-                  value: '${product.proteinGrams}g',
-                  label: 'PROTEIN',
+                child: Text(
+                  'At your door in 12 min',
+                  style: TextStyle(
+                    color: ProtoColors.lime,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const VerticalDivider(color: ProtoColors.border, width: 1),
-              Expanded(
-                child: _NutritionStat(
-                  value: '${product.servings}',
-                  label: 'SERVINGS',
-                ),
-              ),
-              const VerticalDivider(color: ProtoColors.border, width: 1),
-              const Expanded(
-                child: _NutritionStat(value: '100%', label: 'AUTHENTIC'),
               ),
             ],
           ),
         ),
-      ),
-      const SizedBox(height: 28),
-      const Text(
-        'Made for your momentum.',
-        style: TextStyle(
-          fontSize: 19,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -.4,
-        ),
-      ),
-      const SizedBox(height: 12),
-      Text(
-        product.description,
-        style: const TextStyle(
-          color: ProtoColors.muted,
-          fontSize: 13,
-          height: 1.75,
-        ),
-      ),
-      const SizedBox(height: 24),
-      const Divider(color: ProtoColors.border, height: 1),
-      const SizedBox(height: 20),
-      const Row(
-        children: [
-          Icon(Icons.verified_outlined, color: ProtoColors.muted, size: 19),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Handpicked brands. Sealed, fresh, and ready to go.',
-              style: TextStyle(
-                color: ProtoColors.muted,
-                fontSize: 11,
-                height: 1.5,
+        if (product.flavors.isNotEmpty) ...[
+          const SizedBox(height: 26),
+          Row(
+            children: [
+              const Text(
+                'Pick your flavour',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
-            ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  flavor ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(
+                    color: ProtoColors.muted,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in product.flavors)
+                ChoiceChip(
+                  label: Text(option),
+                  selected: option == flavor,
+                  onSelected: (_) => onFlavorSelected(option),
+                  showCheckmark: false,
+                  backgroundColor: ProtoColors.surface,
+                  selectedColor: ProtoColors.lime.withValues(alpha: .12),
+                  side: BorderSide(
+                    color: option == flavor
+                        ? ProtoColors.lime
+                        : ProtoColors.border,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 6,
+                  ),
+                  labelStyle: TextStyle(
+                    color: option == flavor
+                        ? ProtoColors.lime
+                        : ProtoColors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+            ],
           ),
         ],
-      ),
-    ],
-  );
+        const SizedBox(height: 26),
+        Container(
+          decoration: BoxDecoration(
+            color: ProtoColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: ProtoColors.border),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _NutritionStat(
+                    value: '${product.proteinGrams}g',
+                    label: 'PROTEIN',
+                  ),
+                ),
+                const VerticalDivider(color: ProtoColors.border, width: 1),
+                Expanded(
+                  child: _NutritionStat(
+                    value: '${product.servings}',
+                    label: 'SERVINGS',
+                  ),
+                ),
+                const VerticalDivider(color: ProtoColors.border, width: 1),
+                const Expanded(
+                  child: _NutritionStat(value: '100%', label: 'AUTHENTIC'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        const Text(
+          'Made for your momentum.',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -.4,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          product.description,
+          style: const TextStyle(
+            color: ProtoColors.muted,
+            fontSize: 13,
+            height: 1.75,
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Divider(color: ProtoColors.border, height: 1),
+        const SizedBox(height: 20),
+        const Row(
+          children: [
+            Icon(Icons.verified_outlined, color: ProtoColors.muted, size: 19),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Handpicked brands. Sealed, fresh, and ready to go.',
+                style: TextStyle(
+                  color: ProtoColors.muted,
+                  fontSize: 11,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _NutritionStat extends StatelessWidget {
@@ -699,6 +763,30 @@ class _PurchaseBar extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        controller.add(
+                          product,
+                          flavor: flavor,
+                          quantity: selectedQuantity,
+                        );
+                        Navigator.of(context).pushNamed('/checkout');
+                      },
+                      icon: const Icon(Icons.bolt_rounded, size: 18),
+                      label: const Text('Buy now'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: ProtoColors.lime,
+                        side: const BorderSide(color: ProtoColors.lime),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
                 ],

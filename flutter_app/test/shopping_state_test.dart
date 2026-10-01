@@ -155,7 +155,7 @@ void main() {
     expect(app.orderById(first.id), same(first));
   });
 
-  test('mock status moves through all four steps and stays delivered', () {
+  test('mock status moves through all five steps and stays delivered', () {
     app.add(water);
     final order = place();
     var updates = 0;
@@ -164,12 +164,12 @@ void main() {
       expect(app.advanceOrderStatus(order.id)!.status, status);
       expect(app.orderById(order.id)!.status, status);
     }
-    expect(updates, 3);
+    expect(updates, 4);
     expect(order.status, OrderStatus.orderPlaced);
     expect(app.advanceOrderStatus(order.id)!.status, OrderStatus.delivered);
-    expect(updates, 3);
+    expect(updates, 4);
     expect(app.advanceOrderStatus('unknown'), isNull);
-    expect(updates, 3);
+    expect(updates, 4);
     expect(app.orders, hasLength(1));
   });
 

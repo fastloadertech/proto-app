@@ -351,7 +351,7 @@ void main() {
       expect(find.byType(OrderStatusScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
       await _tap(tester, find.text('Advance demo status'));
-      expect(app.orders.single.status, OrderStatus.preparing);
+      expect(app.orders.single.status, OrderStatus.confirmed);
       expect(tester.takeException(), isNull);
     });
   }

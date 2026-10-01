@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/formatters/currency.dart';
 import '../../../core/state/app_controller.dart';
+import '../../../core/state/coupon_pricing.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/price_summary.dart';
 import '../../../core/widgets/product_artwork.dart';
@@ -26,6 +27,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _area = TextEditingController();
   final _city = TextEditingController();
   final _pin = TextEditingController();
+  final _coupon = TextEditingController();
+  late final Listenable _addressDraft = Listenable.merge([
+    _street,
+    _area,
+    _city,
+    _pin,
+  ]);
   PaymentMethod _paymentMethod = PaymentMethod.cashOnDelivery;
   bool _initialized = false;
   bool _placingOrder = false;
@@ -43,6 +51,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _area.text = app.deliveryAddress.area;
     _city.text = app.deliveryAddress.city;
     _pin.text = app.deliveryAddress.postalCode;
+    _coupon.text = app.couponCode ?? '';
     _paymentMethod = app.paymentMethod;
     _initialized = true;
   }
@@ -57,6 +66,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _area,
       _city,
       _pin,
+      _coupon,
     ]) {
       controller.dispose();
     }
@@ -88,6 +98,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       area: _area.text.trim(),
       city: _city.text.trim(),
       postalCode: _pin.text.trim(),
+      label: app.deliveryAddress.label,
     );
     final paymentMethod = _paymentMethod;
     if (!contact.isValid || !address.isValid) {
@@ -135,6 +146,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  Future<void> _chooseAddress() async {
+    final result = await Navigator.of(context).pushNamed('/addresses');
+    if (!mounted || result is! DeliveryAddress) return;
+    setState(() {
+      _street.text = result.line1;
+      _area.text = result.area;
+      _city.text = result.city;
+      _pin.text = result.postalCode;
+      _error = null;
+    });
+  }
+
+  void _applyCoupon() {
+    FocusScope.of(context).unfocus();
+    AppScope.of(context).applyCoupon(_coupon.text);
+  }
+
   String? _requiredText(String? value, String label, {int minLength = 2}) {
     if (value == null || value.trim().length < minLength)
       return 'Enter your $label.';
@@ -169,7 +197,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     validator: validator,
   );
 
-  Widget _form() => Form(
+  Widget _form(AppController app) => Form(
     key: _formKey,
     child: Column(
       children: [
@@ -223,6 +251,70 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           subtitle: 'Your delivery address',
           child: Column(
             children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: ProtoColors.elevated,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: ProtoColors.border),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      color: ProtoColors.lime,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Deliver to · ${app.deliveryAddress.label}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          AnimatedBuilder(
+                            animation: _addressDraft,
+                            builder: (context, _) => Text(
+                              '${_street.text}\n${_area.text}, ${_city.text} — ${_pin.text}',
+                              style: const TextStyle(
+                                color: ProtoColors.muted,
+                                fontSize: 11,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 9),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _placingOrder ? null : _chooseAddress,
+                  icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                  label: const Text('Choose saved address'),
+                ),
+              ),
+              const SizedBox(height: 5),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'You can also adjust this address below.',
+                  style: TextStyle(color: ProtoColors.muted, fontSize: 11),
+                ),
+              ),
+              const SizedBox(height: 16),
               _field(
                 label: 'Street address',
                 controller: _street,
@@ -309,6 +401,98 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ),
   );
 
+  Widget _couponSection(AppController app) {
+    final activeCoupon = app.couponCode == null
+        ? null
+        : CouponPricing.evaluate(app.couponCode!, app.subtotal);
+    return _CheckoutSection(
+      title: 'Have a code?',
+      subtitle: 'Try PROTO10 or FUEL50 in this local demo.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _coupon,
+                  enabled: !_placingOrder,
+                  textCapitalization: TextCapitalization.characters,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _applyCoupon(),
+                  decoration: const InputDecoration(
+                    labelText: 'Promo code',
+                    hintText: 'Enter code',
+                    labelStyle: TextStyle(
+                      color: ProtoColors.muted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton(
+                onPressed: _placingOrder ? null : _applyCoupon,
+                child: const Text('Apply code'),
+              ),
+            ],
+          ),
+          if (activeCoupon != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  activeCoupon.isApplied
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.info_outline_rounded,
+                  color: activeCoupon.isApplied
+                      ? ProtoColors.lime
+                      : const Color(0xFFF3B8A7),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    activeCoupon.isApplied
+                        ? '${app.couponCode} applied · Save ${formatPrice(activeCoupon.discount)}'
+                        : '${app.couponCode} paused · ${activeCoupon.message}',
+                    style: TextStyle(
+                      color: activeCoupon.isApplied
+                          ? ProtoColors.lime
+                          : const Color(0xFFF3B8A7),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _placingOrder
+                      ? null
+                      : () {
+                          app.removeCoupon();
+                          _coupon.clear();
+                        },
+                  child: const Text('Remove code'),
+                ),
+              ],
+            ),
+          ],
+          if (app.couponMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              app.couponMessage!,
+              style: const TextStyle(
+                color: Color(0xFFF3B8A7),
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _summary(AppController app) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
@@ -330,10 +514,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       ),
       const SizedBox(height: 20),
+      _couponSection(app),
+      const SizedBox(height: 20),
       PriceSummary(
         subtotal: app.subtotal,
         deliveryFee: app.deliveryFee,
         savings: app.savings,
+        discount: app.couponDiscount,
       ),
       const SizedBox(height: 20),
       if (_error != null) ...[
@@ -424,13 +611,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(flex: 3, child: _form()),
+                                  Expanded(flex: 3, child: _form(app)),
                                   const SizedBox(width: 24),
                                   Expanded(flex: 2, child: _summary(app)),
                                 ],
                               )
                             else ...[
-                              _form(),
+                              _form(app),
                               const SizedBox(height: 20),
                               _summary(app),
                             ],

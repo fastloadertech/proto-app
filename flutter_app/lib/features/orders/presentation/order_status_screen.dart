@@ -64,6 +64,7 @@ class OrderStatusScreen extends StatelessWidget {
                         PriceSummary(
                           subtotal: order.subtotal,
                           deliveryFee: order.deliveryFee,
+                          discount: order.discount,
                           title: 'Order summary',
                         ),
                         const SizedBox(height: 24),
@@ -540,6 +541,7 @@ class _UnknownOrder extends StatelessWidget {
 
 IconData _statusIcon(OrderStatus status) => switch (status) {
   OrderStatus.orderPlaced => Icons.receipt_long_outlined,
+  OrderStatus.confirmed => Icons.verified_outlined,
   OrderStatus.preparing => Icons.inventory_2_outlined,
   OrderStatus.outForDelivery => Icons.delivery_dining_rounded,
   OrderStatus.delivered => Icons.check_rounded,

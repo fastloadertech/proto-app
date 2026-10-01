@@ -7,7 +7,18 @@ import '../data/local_catalog_repository.dart';
 import '../domain/product.dart';
 import 'product_detail_screen.dart';
 
-enum _CatalogSort { recommended, priceLow, priceHigh, topRated }
+enum _PriceBand {
+  under500('Under ₹500', null, 499.99),
+  from500to999('₹500–₹999', 500, 999.99),
+  from1000to1999('₹1,000–₹1,999', 1000, 1999.99),
+  over2000('₹2,000+', 2000, null);
+
+  const _PriceBand(this.label, this.min, this.max);
+
+  final String label;
+  final double? min;
+  final double? max;
+}
 
 class ProductListingScreen extends StatefulWidget {
   const ProductListingScreen({
@@ -28,7 +39,9 @@ class ProductListingScreen extends StatefulWidget {
 class _ProductListingScreenState extends State<ProductListingScreen> {
   late final TextEditingController _search;
   String? _categoryId;
-  _CatalogSort _sort = _CatalogSort.recommended;
+  CatalogSort _sort = CatalogSort.recommended;
+  _PriceBand? _priceBand;
+  ProductForm? _form;
 
   @override
   void initState() {
@@ -50,37 +63,36 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
     return 'The Proto store';
   }
 
-  List<Product> get _products {
-    final products = LocalCatalogRepository.search(_search.text)
-        .where(
-          (product) => _categoryId == null || product.categoryId == _categoryId,
-        )
-        .toList();
-    switch (_sort) {
-      case _CatalogSort.recommended:
-        break;
-      case _CatalogSort.priceLow:
-        products.sort((a, b) => a.price.compareTo(b.price));
-        break;
-      case _CatalogSort.priceHigh:
-        products.sort((a, b) => b.price.compareTo(a.price));
-        break;
-      case _CatalogSort.topRated:
-        products.sort((a, b) => b.rating.compareTo(a.rating));
-        break;
-    }
-    return products;
-  }
+  List<Product> get _products => LocalCatalogRepository.browse(
+    query: _search.text,
+    categoryId: _categoryId,
+    minPrice: _priceBand?.min,
+    maxPrice: _priceBand?.max,
+    form: _form,
+    sort: _sort,
+  );
 
-  String _sortLabel(_CatalogSort sort) => switch (sort) {
-    _CatalogSort.recommended => 'Recommended',
-    _CatalogSort.priceLow => 'Price: low to high',
-    _CatalogSort.priceHigh => 'Price: high to low',
-    _CatalogSort.topRated => 'Top rated',
+  String _sortLabel(CatalogSort sort) => switch (sort) {
+    CatalogSort.recommended => 'Recommended',
+    CatalogSort.priceLow => 'Price: low to high',
+    CatalogSort.priceHigh => 'Price: high to low',
+    CatalogSort.name => 'Name: A to Z',
+    CatalogSort.popular => 'Most popular',
+    CatalogSort.topRated => 'Top rated',
   };
 
+  String _formLabel(ProductForm form) => switch (form) {
+    ProductForm.tub => 'Tubs',
+    ProductForm.pouch => 'Pouches',
+    ProductForm.bar => 'Bars',
+    ProductForm.bottle => 'Bottles',
+  };
+
+  int get _activeFilterCount =>
+      (_priceBand == null ? 0 : 1) + (_form == null ? 0 : 1);
+
   Future<void> _showSort() async {
-    final selected = await showModalBottomSheet<_CatalogSort>(
+    final selected = await showModalBottomSheet<CatalogSort>(
       context: context,
       isScrollControlled: true,
       backgroundColor: ProtoColors.surface,
@@ -107,7 +119,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                   style: TextStyle(color: ProtoColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
-                for (final sort in _CatalogSort.values)
+                for (final sort in CatalogSort.values)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(_sortLabel(sort)),
@@ -130,11 +142,150 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
     if (selected != null && mounted) setState(() => _sort = selected);
   }
 
+  Future<void> _showFilters() async {
+    var selectedPrice = _priceBand;
+    var selectedForm = _form;
+    final result =
+        await showModalBottomSheet<({_PriceBand? price, ProductForm? form})>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: ProtoColors.surface,
+          showDragHandle: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          builder: (context) => StatefulBuilder(
+            builder: (context, updateSheet) => SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Refine your fuel',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Choose a price and product type.',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      const Text(
+                        'PRICE RANGE',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _FilterChip(
+                            label: 'Any price',
+                            selected: selectedPrice == null,
+                            onTap: () =>
+                                updateSheet(() => selectedPrice = null),
+                          ),
+                          for (final band in _PriceBand.values)
+                            _FilterChip(
+                              label: band.label,
+                              selected: selectedPrice == band,
+                              onTap: () =>
+                                  updateSheet(() => selectedPrice = band),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'PRODUCT TYPE',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _FilterChip(
+                            label: 'All types',
+                            selected: selectedForm == null,
+                            onTap: () => updateSheet(() => selectedForm = null),
+                          ),
+                          for (final form in ProductForm.values)
+                            _FilterChip(
+                              label: _formLabel(form),
+                              selected: selectedForm == form,
+                              onTap: () =>
+                                  updateSheet(() => selectedForm = form),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () => updateSheet(() {
+                              selectedPrice = null;
+                              selectedForm = null;
+                            }),
+                            child: const Text('Clear filters'),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(
+                                context,
+                              ).pop((price: selectedPrice, form: selectedForm)),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: ProtoColors.lime,
+                                foregroundColor: ProtoColors.background,
+                                minimumSize: const Size.fromHeight(48),
+                              ),
+                              child: const Text('Show products'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+    if (result != null && mounted) {
+      setState(() {
+        _priceBand = result.price;
+        _form = result.form;
+      });
+    }
+  }
+
   void _clearFilters() {
     _search.clear();
     setState(() {
       _categoryId = null;
-      _sort = _CatalogSort.recommended;
+      _sort = CatalogSort.recommended;
+      _priceBand = null;
+      _form = null;
     });
   }
 
@@ -330,30 +481,87 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                             Expanded(
                               child: Text(
                                 '${products.length} ${products.length == 1 ? 'essential' : 'essentials'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: ProtoColors.muted,
                                   fontSize: 12,
                                 ),
                               ),
                             ),
-                            TextButton.icon(
-                              onPressed: _showSort,
-                              style: TextButton.styleFrom(
-                                foregroundColor: ProtoColors.text,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 6,
-                                ),
-                                minimumSize: Size.zero,
+                            OutlinedButton.icon(
+                              onPressed: _showFilters,
+                              icon: const Icon(
+                                Icons.filter_list_rounded,
+                                size: 16,
                               ),
-                              icon: const Icon(Icons.tune_rounded, size: 16),
                               label: Text(
-                                _sortLabel(_sort),
-                                style: const TextStyle(fontSize: 11),
+                                _activeFilterCount == 0
+                                    ? 'Filters'
+                                    : 'Filters ($_activeFilterCount)',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: _activeFilterCount == 0
+                                    ? ProtoColors.text
+                                    : ProtoColors.lime,
+                                side: BorderSide(
+                                  color: _activeFilterCount == 0
+                                      ? ProtoColors.border
+                                      : ProtoColors.lime,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                minimumSize: const Size(0, 38),
                               ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 6),
+                        TextButton.icon(
+                          onPressed: _showSort,
+                          style: TextButton.styleFrom(
+                            foregroundColor: ProtoColors.text,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            minimumSize: Size.zero,
+                          ),
+                          icon: const Icon(Icons.sort_rounded, size: 16),
+                          label: Text(
+                            _sortLabel(_sort),
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        if (_activeFilterCount > 0) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (_priceBand != null)
+                                InputChip(
+                                  label: Text(_priceBand!.label),
+                                  onDeleted: () =>
+                                      setState(() => _priceBand = null),
+                                  deleteIcon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                  ),
+                                ),
+                              if (_form != null)
+                                InputChip(
+                                  label: Text(_formLabel(_form!)),
+                                  onDeleted: () => setState(() => _form = null),
+                                  deleteIcon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 14),
                       ],
                     ),
@@ -389,10 +597,13 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          const Text(
-                            'Try another search or explore\nthe rest of the Proto store.',
+                          Text(
+                            _search.text.trim().isEmpty &&
+                                    _activeFilterCount > 0
+                                ? 'Try another price or type, or clear your filters.'
+                                : 'Try another search or explore\nthe rest of the Proto store.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: ProtoColors.muted,
                               fontSize: 13,
                               height: 1.6,
@@ -475,6 +686,33 @@ class _CategoryChip extends StatelessWidget {
           ),
         ),
       ),
+    ),
+  );
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ChoiceChip(
+    label: Text(label),
+    selected: selected,
+    onSelected: (_) => onTap(),
+    showCheckmark: false,
+    backgroundColor: ProtoColors.elevated,
+    selectedColor: ProtoColors.lime.withValues(alpha: .15),
+    side: BorderSide(color: selected ? ProtoColors.lime : ProtoColors.border),
+    labelStyle: TextStyle(
+      color: selected ? ProtoColors.lime : ProtoColors.text,
+      fontSize: 12,
     ),
   );
 }

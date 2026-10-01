@@ -14,12 +14,14 @@ enum PaymentMethod {
 
 enum OrderStatus {
   orderPlaced,
+  confirmed,
   preparing,
   outForDelivery,
   delivered;
 
   String get label => switch (this) {
     orderPlaced => 'Order Placed',
+    confirmed => 'Confirmed',
     preparing => 'Preparing',
     outForDelivery => 'Out for Delivery',
     delivered => 'Delivered',
@@ -27,6 +29,7 @@ enum OrderStatus {
 
   String get description => switch (this) {
     orderPlaced => 'Your fuel is on the list. We have your order.',
+    confirmed => 'Your order is confirmed in this local demo.',
     preparing => 'Your essentials are being packed with care.',
     outForDelivery => 'Your bag is on its way to your door.',
     delivered => 'Good fuel, delivered. Keep showing up.',
@@ -114,6 +117,8 @@ class ProtoOrder {
     required this.contact,
     required this.paymentMethod,
     required this.deliveryFee,
+    this.discount = 0,
+    this.promoCode,
     this.status = OrderStatus.orderPlaced,
   }) : items = List.unmodifiable(items);
 
@@ -125,10 +130,12 @@ class ProtoOrder {
   final CheckoutContact contact;
   final PaymentMethod paymentMethod;
   final double deliveryFee;
+  final double discount;
+  final String? promoCode;
   final OrderStatus status;
 
   double get subtotal => items.fold(0, (sum, item) => sum + item.total);
-  double get total => subtotal + deliveryFee;
+  double get total => subtotal + deliveryFee - discount;
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
   ProtoOrder withStatus(OrderStatus next) => ProtoOrder(
@@ -140,6 +147,8 @@ class ProtoOrder {
     contact: contact,
     paymentMethod: paymentMethod,
     deliveryFee: deliveryFee,
+    discount: discount,
+    promoCode: promoCode,
     status: next,
   );
 }

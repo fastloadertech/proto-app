@@ -24,13 +24,19 @@ class LocalOrderRepository {
     required CheckoutContact contact,
     required PaymentMethod paymentMethod,
     required double deliveryFee,
+    double discount = 0,
+    String? promoCode,
   }) {
     if (items.isEmpty)
       throw StateError('Add something to your bag before checkout.');
     if (!address.isValid || !contact.isValid)
       throw ArgumentError('Complete your delivery and contact details.');
+    final subtotal = items.fold<double>(0, (sum, item) => sum + item.total);
     if (!deliveryFee.isFinite ||
         deliveryFee < 0 ||
+        !discount.isFinite ||
+        discount < 0 ||
+        discount > subtotal ||
         items.any(
           (item) =>
               item.quantity <= 0 ||
@@ -51,6 +57,8 @@ class LocalOrderRepository {
       contact: contact.normalized,
       paymentMethod: paymentMethod,
       deliveryFee: deliveryFee,
+      discount: discount,
+      promoCode: discount > 0 ? promoCode?.trim().toUpperCase() : null,
     );
     _orders.insert(0, order);
     return order;

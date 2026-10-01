@@ -99,6 +99,7 @@ class BagScreen extends StatelessWidget {
                         subtotal: app.subtotal,
                         deliveryFee: app.deliveryFee,
                         savings: app.savings,
+                        discount: app.couponDiscount,
                         title: 'Bag summary',
                       ),
                       const SizedBox(height: 24),

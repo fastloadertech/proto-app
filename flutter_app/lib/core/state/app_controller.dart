@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../features/catalog/domain/product.dart';
 import '../../features/orders/data/local_order_repository.dart';
 import '../../features/orders/domain/order.dart';
+import 'coupon_pricing.dart';
 import 'delivery_pricing.dart';
 
 /// Customer session state. All catalog, bag, and order data stays local.
@@ -12,26 +13,37 @@ class AppController extends ChangeNotifier {
   AppController({LocalOrderRepository? orderRepository})
     : _orderRepository = orderRepository ?? LocalOrderRepository();
 
-  final LocalOrderRepository _orderRepository;
-  final Map<(String, String?), BagLine> _bag = {};
-  final Set<String> _savedIds = {};
-  String _location = 'Indiranagar, Bengaluru';
-  DeliveryAddress _deliveryAddress = const DeliveryAddress(
+  static const DeliveryAddress _initialAddress = DeliveryAddress(
     line1: '42, First Main Road',
     area: 'Indiranagar',
     city: 'Bengaluru',
     postalCode: '560038',
   );
+
+  final LocalOrderRepository _orderRepository;
+  final Map<(String, String?), BagLine> _bag = {};
+  final Set<String> _savedIds = {};
+  final Map<String, DeliveryAddress> _savedAddresses = {
+    'Home': _initialAddress,
+  };
+  String _location = 'Indiranagar, Bengaluru';
+  DeliveryAddress _deliveryAddress = _initialAddress;
   CheckoutContact _contact = const CheckoutContact(
     name: 'Alex Rao',
     phone: '9876543210',
   );
   PaymentMethod _paymentMethod = PaymentMethod.cashOnDelivery;
+  String? _couponCode;
+  String? _couponMessage;
 
   String get location => _location;
   DeliveryAddress get deliveryAddress => _deliveryAddress;
+  List<DeliveryAddress> get savedAddresses =>
+      List.unmodifiable(_savedAddresses.values);
   CheckoutContact get contact => _contact;
   PaymentMethod get paymentMethod => _paymentMethod;
+  String? get couponCode => _couponCode;
+  String? get couponMessage => _couponMessage;
   List<ProtoOrder> get orders => _orderRepository.orders;
   ProtoOrder? orderById(String id) => _orderRepository.getById(id);
   int get cartCount =>
@@ -52,7 +64,14 @@ class AppController extends ChangeNotifier {
         (line.product.originalPrice - line.product.price) * line.quantity,
   );
   double get deliveryFee => DeliveryPricing.feeFor(subtotal);
-  double get total => subtotal + deliveryFee;
+  double get couponDiscount => _couponCode == null
+      ? 0
+      : CouponPricing.evaluate(_couponCode!, subtotal).discount;
+  double get total {
+    final amount = subtotal + deliveryFee - couponDiscount;
+    return amount < 0 ? 0 : amount;
+  }
+
   int quantityFor(String id, {String? flavor}) => flavor != null
       ? _bag[(id, flavor)]?.quantity ?? 0
       : _bag.values
@@ -126,6 +145,54 @@ class AppController extends ChangeNotifier {
       },
       label: _deliveryAddress.label,
     );
+    _savedAddresses[_deliveryAddress.label] = _deliveryAddress;
+    notifyListeners();
+  }
+
+  void selectDeliveryAddress(String label) {
+    final address = _savedAddresses[label];
+    if (address == null) {
+      throw ArgumentError.value(label, 'label', 'Choose a saved address.');
+    }
+    _deliveryAddress = address;
+    _location = '${address.area}, ${address.city}';
+    notifyListeners();
+  }
+
+  void saveDeliveryAddress(DeliveryAddress address) {
+    final normalized = address.normalized;
+    if (!normalized.isValid ||
+        !const {'Home', 'Work', 'Other'}.contains(normalized.label)) {
+      throw ArgumentError.value(address, 'address', 'Enter a valid address.');
+    }
+    _savedAddresses[normalized.label] = normalized;
+    _deliveryAddress = normalized;
+    _location = '${normalized.area}, ${normalized.city}';
+    notifyListeners();
+  }
+
+  bool applyCoupon(String input) {
+    if (input.trim().isEmpty) {
+      _couponMessage = 'Enter a coupon code.';
+      notifyListeners();
+      return false;
+    }
+    final evaluation = CouponPricing.evaluate(input, subtotal);
+    if (!evaluation.isApplied) {
+      _couponMessage = evaluation.message;
+      notifyListeners();
+      return false;
+    }
+    _couponCode = evaluation.code;
+    _couponMessage = null;
+    notifyListeners();
+    return true;
+  }
+
+  void removeCoupon() {
+    if (_couponCode == null && _couponMessage == null) return;
+    _couponCode = null;
+    _couponMessage = null;
     notifyListeners();
   }
 
@@ -141,6 +208,7 @@ class AppController extends ChangeNotifier {
     required CheckoutContact contact,
     required PaymentMethod paymentMethod,
   }) {
+    final discount = couponDiscount;
     final order = _orderRepository.create(
       items: bagLines
           .map(
@@ -156,12 +224,17 @@ class AppController extends ChangeNotifier {
       contact: contact,
       paymentMethod: paymentMethod,
       deliveryFee: deliveryFee,
+      discount: discount,
+      promoCode: discount > 0 ? _couponCode : null,
     );
     _deliveryAddress = order.address;
+    _savedAddresses[order.address.label] = order.address;
     _contact = order.contact;
     _paymentMethod = paymentMethod;
     _location = '${order.address.area}, ${order.address.city}';
     _bag.clear();
+    _couponCode = null;
+    _couponMessage = null;
     notifyListeners();
     return order;
   }

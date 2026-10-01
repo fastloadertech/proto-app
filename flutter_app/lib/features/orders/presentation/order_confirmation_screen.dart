@@ -144,12 +144,37 @@ class OrderConfirmationScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _ConfirmationDetail(label: 'Order ID', value: order.id),
             const SizedBox(height: 14),
+            _ConfirmationDetail(label: 'Status', value: order.status.label),
+            const SizedBox(height: 14),
             _ConfirmationDetail(
               label: 'Payment',
               value: order.paymentMethod.label,
             ),
             const SizedBox(height: 14),
             _ConfirmationDetail(label: 'Items', value: '${order.itemCount}'),
+            const SizedBox(height: 14),
+            _ConfirmationDetail(
+              label: 'Delivery fee',
+              value: order.deliveryFee == 0
+                  ? 'FREE'
+                  : formatPrice(order.deliveryFee),
+            ),
+            const SizedBox(height: 14),
+            _ConfirmationDetail(
+              label: 'Discount',
+              value: order.discount == 0
+                  ? formatPrice(0)
+                  : '−${formatPrice(order.discount)}',
+            ),
+            if (order.promoCode != null) ...[
+              const SizedBox(height: 14),
+              _ConfirmationDetail(label: 'Promo code', value: order.promoCode!),
+            ],
+            const SizedBox(height: 14),
+            _ConfirmationDetail(
+              label: 'Final amount',
+              value: formatPrice(order.total),
+            ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 18),
               child: Divider(height: 1),
@@ -303,6 +328,7 @@ class OrderConfirmationScreen extends StatelessWidget {
       PriceSummary(
         subtotal: order.subtotal,
         deliveryFee: order.deliveryFee,
+        discount: order.discount,
         title: 'Order total',
       ),
       const SizedBox(height: 24),

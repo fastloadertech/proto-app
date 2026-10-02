@@ -21,6 +21,9 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final cartCount = AppScope.of(context).cartCount;
+    final extraLabelHeight = MediaQuery.textScalerOf(context).scale(10) - 10;
+    final navHeight =
+        75.0 + (extraLabelHeight > 0 ? extraLabelHeight * 2 : 0.0);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -62,7 +65,7 @@ class _MainShellState extends State<MainShell> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
               child: SizedBox(
-                height: 75,
+                height: navHeight,
                 child: Row(
                   children: [
                     _NavItem(

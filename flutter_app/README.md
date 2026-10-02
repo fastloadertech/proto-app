@@ -1,6 +1,6 @@
 # Proto
 
-A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 3 extends the local shopping journey with catalog discovery controls, saved addresses, coupons, and a five-stage order timeline.
+A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 4 builds on the existing shopping journey with realistic local availability, a larger saved-address book, and clearer order details.
 
 ## Run
 
@@ -28,11 +28,11 @@ For Android, connect a device or start an emulator, then run `flutter run`. Andr
 
 Splash → login → guest or explicit demo sign-in → shop → bag → checkout → confirmation → order status.
 
-Browse six categories and twelve local products. Search by product or category name; filter by category, price band, and product form; sort by price, name, or the catalog's existing popularity data. Product details show availability and support a quantity-aware `Add to bag` or `Buy now` action. Each flavour has its own bag quantity. The bag supports increasing or decreasing quantities, removing an entire variant, reopening product details with that flavour selected, and viewing line totals. The bottom tabs preserve your position between Shop, Categories, Bag, and You.
+Browse six categories and twelve local products. Search by product or category name; filter by category, price band, and product form; sort by price, name, or the catalog's existing popularity data. One sample product is temporarily unavailable; its card and details explain this and disable purchase. Available products support a quantity-aware `Add to bag` or `Buy now` action. Each flavour has its own bag quantity. The bag supports increasing or decreasing quantities, removing an entire variant, reopening product details with that flavour selected, and viewing line totals. The bottom tabs preserve your position between Shop, Categories, Bag, and You.
 
-Checkout validates contact details and a delivery address, lets you save and select Home, Work, or Other addresses, displays the same price breakdown as the bag, and lets you choose a demo payment method. Delivery is ₹35 below a ₹499 subtotal and free from ₹499; an empty bag has no delivery fee. `PROTO10` takes 10% off the subtotal, rounded to rupees and capped at ₹250; `FUEL50` takes ₹50 off a subtotal of at least ₹499. Invalid and expired codes show feedback. A code pauses if a bag change makes it ineligible, and the total cannot become negative. Placing a valid local order captures its items, quantities, flavours, unit prices, delivery fee, discount, address, contact, and payment choice before clearing the bag.
+Checkout validates contact details and a delivery address. You can view and edit saved addresses from You or checkout, keep multiple destinations even with the same Home, Work, or Other label, and select one for delivery. Checkout shows the same price breakdown as the bag and lets you choose a demo payment method. Delivery is ₹35 below a ₹499 subtotal and free from ₹499; an empty bag has no delivery fee. `PROTO10` takes 10% off the subtotal, rounded to rupees and capped at ₹250; `FUEL50` takes ₹50 off a subtotal of at least ₹499. Invalid and expired codes show feedback. A code pauses if a bag change makes it ineligible, and the total cannot become negative. Placing a valid local order captures its items, quantities, flavours, unit prices, delivery fee, discount, address, contact, and payment choice before clearing the bag.
 
-Confirmation shows the order ID, captured items, destination, fee, discount, final amount, status, and sample ETA. Open the order status screen with `Track order`, or continue shopping. Open `Your orders` from You to see the current session's orders, newest first, with date, amount, and status, and reopen any order's status.
+Confirmation shows the order ID, captured items, destination, fee, discount, final amount, status, and sample ETA. Open the order details and status screen with `Track order`, or continue shopping. Open `Your orders` from You to see the current session's orders, newest first, with date, amount, and status. Reopened details include the order's placement date and time.
 
 Login checks a local ten-digit phone number and explicitly labels demo sign-in. It sends no OTP and does not create an authenticated account. Bag contents, favourites, delivery and contact details, payment choices, and order history are all kept only in memory for the current app session. Restarting or refreshing the app resets them.
 
@@ -48,7 +48,7 @@ On the status screen, `Advance demo status` manually moves an order through `Ord
 lib/
   app/                     App composition, routes, and tab shell
   core/
-    formatters/            Shared rupee formatting
+    formatters/            Shared rupee and order-date formatting
     state/                 AppController, AppScope, delivery and coupon pricing
     theme/                 Central brand colors and Material theme
     widgets/               Brand, buttons, headings, product artwork/cards,
@@ -66,7 +66,7 @@ lib/
       domain/              Order, item, address, contact, payment, and status models
       data/                In-memory LocalOrderRepository
       presentation/        Confirmation, status timeline, and order history
-    profile/presentation/  Saved products, orders entry, and demo sign-in
+    profile/presentation/  Saved products, addresses, orders, and demo sign-in
 test/                      Session-state and customer-journey tests
 ```
 
@@ -78,7 +78,7 @@ The existing Expo app in the parent directory is preserved independently. Inter 
 
 ## Verification
 
-Day 3 verification with the local Flutter SDK: `flutter analyze` reports no issues, all 49 tests pass, the Flutter engine preview test passes, and `flutter build web` succeeds. The app was launched in Chrome and the live flow was checked through search, product details, quantity, Buy now, saved address, coupon, order confirmation, tracking, and one mock status advance. The live order-status screen was also checked at a 390 × 844 Chrome viewport. Phone, landscape, and desktop layouts are covered by widget tests and engine previews. Native Android and iOS device runs have not been performed.
+Day 4 verification with the local Flutter SDK: `flutter analyze` reports no issues, all 58 tests pass, the Flutter engine preview test passes, and `flutter build web` succeeds. The Chrome flow was checked through Home, Protein listing, Whey Isolate details, bag quantity and totals, checkout and mock payment selection, confirmation, order history, and order details. The saved-address screen and five-stage status timeline were inspected in Chrome. Phone, landscape, and desktop layouts, including enlarged text, are covered by widget tests and engine previews. Native Android and iOS device runs have not been performed.
 
 Run `flutter analyze` and `flutter test` from this directory for static analysis and the complete test suite. To run the Day 2 state and shopping-flow tests separately:
 
@@ -86,7 +86,7 @@ Run `flutter analyze` and `flutter test` from this directory for static analysis
 flutter test test/shopping_state_test.dart test/shopping_flow_test.dart
 ```
 
-The tests cover login and guest entry; search and category filtering; price and product-form filters; sorting; favourites and flavour-specific quantities; full variant removal; price, coupon, and delivery-fee boundaries; saved-address and checkout validation; local order creation and bag clearing; immutable order details and unique IDs; confirmation, history, and five-stage status progression; and recoverable empty or unknown-order states. An app-level test exercises search → Buy now → saved address → coupon → order → tracking → history. Layout checks include 320 × 640 and 390 × 844 phone viewports, 640 × 320 landscape, and 1440 × 900 desktop.
+The tests cover login and guest entry; search and category filtering; price and product-form filters; sorting; product availability and disabled purchase; favourites and flavour-specific quantities; full variant removal; price, coupon, and delivery-fee boundaries; multiple saved addresses with repeated labels; checkout validation; local order creation and bag clearing; immutable order details and unique IDs; confirmation, history, and five-stage status progression; and recoverable empty or unknown-order states. App-level tests exercise search → Buy now → saved address → coupon → order → tracking → history, and guest → listing → details → bag → checkout → address. Layout checks include 320 × 640 and 390 × 844 phone viewports, 640 × 320 landscape, and 1440 × 900 desktop, with a scaled-text navigation check at 320 × 640.
 
 For Flutter engine renders used in visual review:
 

@@ -230,6 +230,10 @@ void main() {
       product.id,
     );
 
+    // The address shortcut adds content above saved products; scroll the
+    // product card above the persistent tab bar before opening it.
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -120));
+    await tester.pumpAndSettle();
     await _openFirstProduct(tester);
     expect(
       tester

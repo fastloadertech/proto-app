@@ -22,6 +22,7 @@ class Product {
     required this.accentColor,
     required this.form,
     required this.flavors,
+    this.isAvailable = true,
   });
 
   final String id;
@@ -41,6 +42,9 @@ class Product {
   final Color accentColor;
   final ProductForm form;
   final List<String> flavors;
+
+  /// Local catalog availability until live inventory is connected.
+  final bool isAvailable;
 
   int get discountPercent => originalPrice > price && originalPrice > 0
       ? ((originalPrice - price) / originalPrice * 100).round()

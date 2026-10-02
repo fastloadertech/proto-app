@@ -498,7 +498,7 @@ class _ProductGrid extends StatelessWidget {
           crossAxisCount: columns,
           crossAxisSpacing: 14,
           mainAxisSpacing: 16,
-          mainAxisExtent: cardWidth / 1.06 + 168,
+          mainAxisExtent: ProductCard.gridExtent(context, cardWidth),
         ),
         itemCount: products.length,
         itemBuilder: (context, index) => ProductCard(
@@ -522,10 +522,17 @@ class _FuelHero extends StatelessWidget {
     builder: (context, constraints) {
       final compact = constraints.maxWidth < 450;
       final narrow = constraints.maxWidth < 330;
+      final titleSize = narrow
+          ? 28.0
+          : compact
+          ? 31.0
+          : 40.0;
+      final scaledTitleSize = MediaQuery.textScalerOf(context).scale(titleSize);
+      final textHeight = (scaledTitleSize - titleSize).clamp(0.0, 100.0) * 2.5;
       return ClipRRect(
         borderRadius: BorderRadius.circular(19),
         child: SizedBox(
-          height: compact ? 238 : 263,
+          height: (compact ? 238.0 : 263.0) + textHeight,
           child: Stack(
             children: [
               const Positioned.fill(child: ColoredBox(color: ProtoColors.lime)),
@@ -592,11 +599,7 @@ class _FuelHero extends StatelessWidget {
                       'Good fuel.\nGreat form.',
                       style: TextStyle(
                         color: ProtoColors.background,
-                        fontSize: narrow
-                            ? 28
-                            : compact
-                            ? 31
-                            : 40,
+                        fontSize: titleSize,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -1.8,
                         height: 1.03,

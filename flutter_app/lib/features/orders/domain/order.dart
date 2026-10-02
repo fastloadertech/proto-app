@@ -44,6 +44,7 @@ class DeliveryAddress {
     required this.city,
     required this.postalCode,
     this.label = 'Home',
+    this.id = '',
   });
 
   final String line1;
@@ -51,6 +52,9 @@ class DeliveryAddress {
   final String city;
   final String postalCode;
   final String label;
+
+  /// Session-local identity for a saved address. Empty for a new draft.
+  final String id;
 
   bool get isValid =>
       line1.trim().length >= 3 &&
@@ -66,6 +70,16 @@ class DeliveryAddress {
     city: city.trim(),
     postalCode: postalCode.trim(),
     label: label.trim(),
+    id: id,
+  );
+
+  DeliveryAddress withId(String value) => DeliveryAddress(
+    line1: line1,
+    area: area,
+    city: city,
+    postalCode: postalCode,
+    label: label,
+    id: value,
   );
 }
 

@@ -99,6 +99,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       city: _city.text.trim(),
       postalCode: _pin.text.trim(),
       label: app.deliveryAddress.label,
+      id: app.deliveryAddress.id,
     );
     final paymentMethod = _paymentMethod;
     if (!contact.isValid || !address.isValid) {

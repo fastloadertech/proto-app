@@ -13,9 +13,15 @@ class ProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
 
+  static double gridExtent(BuildContext context, double cardWidth) {
+    final textGrowth = MediaQuery.textScalerOf(context).scale(14) - 14;
+    return cardWidth / 1.06 + 168 + (textGrowth > 0 ? textGrowth * 5 : 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
+    final textGrowth = MediaQuery.textScalerOf(context).scale(14) - 14;
     final defaultFlavor = product.flavors.isEmpty
         ? null
         : product.flavors.first;
@@ -57,7 +63,7 @@ class ProductCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (product.badge.isNotEmpty)
+                      if (product.badge.isNotEmpty || !product.isAvailable)
                         Positioned(
                           left: 10,
                           right: 45,
@@ -75,11 +81,15 @@ class ProductCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                product.badge.toUpperCase(),
+                                product.isAvailable
+                                    ? product.badge.toUpperCase()
+                                    : 'UNAVAILABLE',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: ProtoColors.lime,
+                                style: TextStyle(
+                                  color: product.isAvailable
+                                      ? ProtoColors.lime
+                                      : Colors.white,
                                   fontSize: 8,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: .7,
@@ -133,7 +143,7 @@ class ProductCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       SizedBox(
-                        height: 35,
+                        height: 35 + (textGrowth > 0 ? textGrowth * 2.4 : 0),
                         child: Text(
                           product.name,
                           maxLines: 2,
@@ -188,7 +198,29 @@ class ProductCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      if (quantity == 0)
+                      if (!product.isAvailable)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: OutlinedButton(
+                            onPressed: null,
+                            style: OutlinedButton.styleFrom(
+                              disabledForegroundColor: ProtoColors.muted,
+                              side: const BorderSide(color: ProtoColors.border),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                            ),
+                            child: const Text(
+                              'UNAVAILABLE',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (quantity == 0)
                         SizedBox(
                           width: double.infinity,
                           height: 44,

@@ -109,8 +109,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           product: product,
           flavor: _flavor,
           selectedQuantity: _selectedQuantity,
-          onIncrease: () => setState(() => _selectedQuantity++),
-          onDecrease: _selectedQuantity > 1
+          onIncrease: product.isAvailable
+              ? () => setState(() => _selectedQuantity++)
+              : null,
+          onDecrease: product.isAvailable && _selectedQuantity > 1
               ? () => setState(() => _selectedQuantity--)
               : null,
         ),
@@ -261,6 +263,9 @@ class _ProductInformation extends StatelessWidget {
     final category = LocalCatalogRepository.categories
         .where((item) => item.id == product.categoryId)
         .firstOrNull;
+    final availabilityColor = product.isAvailable
+        ? ProtoColors.lime
+        : const Color(0xFFF1AB65);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -336,24 +341,28 @@ class _ProductInformation extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
-                color: ProtoColors.lime.withValues(alpha: .08),
+                color: availabilityColor.withValues(alpha: .08),
                 border: Border.all(
-                  color: ProtoColors.lime.withValues(alpha: .25),
+                  color: availabilityColor.withValues(alpha: .25),
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.check_circle_outline_rounded,
+                    product.isAvailable
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.info_outline_rounded,
                     size: 15,
-                    color: ProtoColors.lime,
+                    color: availabilityColor,
                   ),
-                  SizedBox(width: 6),
+                  const SizedBox(width: 6),
                   Text(
-                    'Available to order',
-                    style: TextStyle(color: ProtoColors.lime, fontSize: 11),
+                    product.isAvailable
+                        ? 'Available to order'
+                        : 'Temporarily unavailable',
+                    style: TextStyle(color: availabilityColor, fontSize: 11),
                   ),
                 ],
               ),
@@ -361,30 +370,33 @@ class _ProductInformation extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-          decoration: BoxDecoration(
-            color: ProtoColors.lime.withValues(alpha: .07),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: ProtoColors.lime.withValues(alpha: .15)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.bolt_rounded, color: ProtoColors.lime, size: 20),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'At your door in 12 min',
-                  style: TextStyle(
-                    color: ProtoColors.lime,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+        if (product.isAvailable)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: ProtoColors.lime.withValues(alpha: .07),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: ProtoColors.lime.withValues(alpha: .15),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.bolt_rounded, color: ProtoColors.lime, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'At your door in 12 min',
+                    style: TextStyle(
+                      color: ProtoColors.lime,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         if (product.flavors.isNotEmpty) ...[
           const SizedBox(height: 26),
           Row(
@@ -562,7 +574,7 @@ class _PurchaseBar extends StatelessWidget {
   final Product product;
   final String? flavor;
   final int selectedQuantity;
-  final VoidCallback onIncrease;
+  final VoidCallback? onIncrease;
   final VoidCallback? onDecrease;
 
   @override
@@ -715,11 +727,13 @@ class _PurchaseBar extends StatelessWidget {
                       children: [
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: () => controller.add(
-                              product,
-                              flavor: flavor,
-                              quantity: selectedQuantity,
-                            ),
+                            onPressed: product.isAvailable
+                                ? () => controller.add(
+                                    product,
+                                    flavor: flavor,
+                                    quantity: selectedQuantity,
+                                  )
+                                : null,
                             style: FilledButton.styleFrom(
                               backgroundColor: ProtoColors.lime,
                               foregroundColor: ProtoColors.background,
@@ -735,9 +749,11 @@ class _PurchaseBar extends StatelessWidget {
                               Icons.shopping_bag_outlined,
                               size: 18,
                             ),
-                            label: const Text(
-                              'Add to bag',
-                              style: TextStyle(
+                            label: Text(
+                              product.isAvailable
+                                  ? 'Add to bag'
+                                  : 'Unavailable',
+                              style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
                               ),
@@ -770,14 +786,16 @@ class _PurchaseBar extends StatelessWidget {
                     width: double.infinity,
                     height: 46,
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        controller.add(
-                          product,
-                          flavor: flavor,
-                          quantity: selectedQuantity,
-                        );
-                        Navigator.of(context).pushNamed('/checkout');
-                      },
+                      onPressed: product.isAvailable
+                          ? () {
+                              controller.add(
+                                product,
+                                flavor: flavor,
+                                quantity: selectedQuantity,
+                              );
+                              Navigator.of(context).pushNamed('/checkout');
+                            }
+                          : null,
                       icon: const Icon(Icons.bolt_rounded, size: 18),
                       label: const Text('Buy now'),
                       style: OutlinedButton.styleFrom(

@@ -148,6 +148,7 @@ class LocalCatalogRepository {
     Product(
       id: 'protein-bites',
       name: 'Peanut Butter Bites',
+      isAvailable: false,
       brand: 'PROTO KITCHEN',
       categoryId: 'snacks',
       price: 299,

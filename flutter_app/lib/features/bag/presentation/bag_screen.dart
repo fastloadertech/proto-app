@@ -449,7 +449,7 @@ class _BagRow extends StatelessWidget {
                                     horizontal: 4,
                                     vertical: 4,
                                   ),
-                                  minimumSize: const Size(0, 32),
+                                  minimumSize: const Size(0, 44),
                                   tapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
                                   textStyle: const TextStyle(
@@ -568,10 +568,10 @@ class _QuantityStepper extends StatelessWidget {
         IconButton(
           onPressed: onDecrease,
           tooltip: 'Remove ${line.product.name}',
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           style: IconButton.styleFrom(
-            minimumSize: const Size(40, 40),
-            maximumSize: const Size(40, 40),
+            minimumSize: const Size(44, 44),
+            maximumSize: const Size(44, 44),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           icon: const Icon(
@@ -598,10 +598,10 @@ class _QuantityStepper extends StatelessWidget {
         IconButton(
           onPressed: onIncrease,
           tooltip: 'Add another ${line.product.name}',
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           style: IconButton.styleFrom(
-            minimumSize: const Size(40, 40),
-            maximumSize: const Size(40, 40),
+            minimumSize: const Size(44, 44),
+            maximumSize: const Size(44, 44),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           icon: const Icon(

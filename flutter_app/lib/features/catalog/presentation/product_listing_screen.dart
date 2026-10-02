@@ -632,7 +632,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                         crossAxisCount: columns,
                         crossAxisSpacing: 14,
                         mainAxisSpacing: 14,
-                        mainAxisExtent: cardWidth / 1.06 + 168,
+                        mainAxisExtent: ProductCard.gridExtent(
+                          context,
+                          cardWidth,
+                        ),
                       ),
                       itemBuilder: (context, index) => ProductCard(
                         product: products[index],

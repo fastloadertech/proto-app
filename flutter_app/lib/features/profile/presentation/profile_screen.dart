@@ -154,18 +154,72 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Material(
+                  color: ProtoColors.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: ProtoColors.border),
+                  ),
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pushNamed('/addresses'),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            color: ProtoColors.lime,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Saved addresses',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  '${app.savedAddresses.length} local ${app.savedAddresses.length == 1 ? 'address' : 'addresses'} · Delivering to ${app.deliveryAddress.label}',
+                                  style: const TextStyle(
+                                    color: ProtoColors.muted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            color: ProtoColors.muted,
+                            size: 19,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 29),
                 Row(
                   children: [
-                    const Text(
-                      'Saved for later',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -.7,
+                    const Expanded(
+                      child: Text(
+                        'Saved for later',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.7,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 12),
                     Text(
                       '${saved.length}',
                       style: const TextStyle(
@@ -237,7 +291,7 @@ class ProfileScreen extends StatelessWidget {
                     crossAxisCount: columns,
                     crossAxisSpacing: 14,
                     mainAxisSpacing: 14,
-                    mainAxisExtent: cardWidth / 1.06 + 168,
+                    mainAxisExtent: ProductCard.gridExtent(context, cardWidth),
                   ),
                   itemCount: saved.length,
                   itemBuilder: (context, index) => ProductCard(
@@ -257,7 +311,7 @@ class ProfileScreen extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              'PROTO / DAY 2\nLocal catalog · Bag, favorites & demo orders',
+              'PROTO / DAY 4\nLocal catalog · Bag, addresses & demo orders',
               style: TextStyle(
                 fontSize: 10,
                 color: ProtoColors.muted,

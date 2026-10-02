@@ -24,6 +24,7 @@ class _DeliveryAddressScreenState extends State<DeliveryAddressScreen> {
   final _city = TextEditingController();
   final _pin = TextEditingController();
   String _label = 'Home';
+  String? _editingAddressId;
   String? _error;
   bool _editing = false;
 
@@ -44,6 +45,7 @@ class _DeliveryAddressScreenState extends State<DeliveryAddressScreen> {
     setState(() {
       _editing = true;
       _error = null;
+      _editingAddressId = address?.id;
       _label =
           address?.label ??
           (firstUnused.isNotEmpty ? firstUnused.first : 'Other');
@@ -56,7 +58,7 @@ class _DeliveryAddressScreenState extends State<DeliveryAddressScreen> {
 
   void _select(DeliveryAddress address) {
     final app = AppScope.of(context);
-    app.selectDeliveryAddress(address.label);
+    app.selectSavedAddress(address.id);
     Navigator.of(context).pop(app.deliveryAddress);
   }
 
@@ -68,6 +70,7 @@ class _DeliveryAddressScreenState extends State<DeliveryAddressScreen> {
       city: _city.text.trim(),
       postalCode: _pin.text.trim(),
       label: _label,
+      id: _editingAddressId ?? '',
     );
     if (!address.isValid) {
       setState(() => _error = 'Complete the address before continuing.');
@@ -281,9 +284,7 @@ class _DeliveryAddressScreenState extends State<DeliveryAddressScreen> {
                     for (final address in addresses) ...[
                       _SavedAddressCard(
                         address: address,
-                        selected:
-                            app.deliveryAddress.label == address.label &&
-                            app.deliveryAddress.formatted == address.formatted,
+                        selected: app.deliveryAddress.id == address.id,
                         onSelect: () => _select(address),
                         onEdit: () => _edit(address),
                       ),
@@ -323,6 +324,7 @@ class _SavedAddressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
+    key: ValueKey('saved-address-${address.id}'),
     width: double.infinity,
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
@@ -383,11 +385,24 @@ class _SavedAddressCard extends StatelessWidget {
         Wrap(
           spacing: 12,
           children: [
-            TextButton(
-              onPressed: onSelect,
-              child: Text('Use ${address.label}'),
+            Semantics(
+              label: 'Use ${address.label} address at ${address.line1}',
+              button: true,
+              excludeSemantics: true,
+              child: TextButton(
+                onPressed: onSelect,
+                child: Text('Use ${address.label}'),
+              ),
             ),
-            TextButton(onPressed: onEdit, child: Text('Edit ${address.label}')),
+            Semantics(
+              label: 'Edit ${address.label} address at ${address.line1}',
+              button: true,
+              excludeSemantics: true,
+              child: TextButton(
+                onPressed: onEdit,
+                child: Text('Edit ${address.label}'),
+              ),
+            ),
           ],
         ),
       ],

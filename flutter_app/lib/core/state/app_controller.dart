@@ -18,14 +18,14 @@ class AppController extends ChangeNotifier {
     area: 'Indiranagar',
     city: 'Bengaluru',
     postalCode: '560038',
+    id: 'address-1',
   );
 
   final LocalOrderRepository _orderRepository;
   final Map<(String, String?), BagLine> _bag = {};
   final Set<String> _savedIds = {};
-  final Map<String, DeliveryAddress> _savedAddresses = {
-    'Home': _initialAddress,
-  };
+  final List<DeliveryAddress> _savedAddresses = [_initialAddress];
+  int _nextAddressNumber = 2;
   String _location = 'Indiranagar, Bengaluru';
   DeliveryAddress _deliveryAddress = _initialAddress;
   CheckoutContact _contact = const CheckoutContact(
@@ -39,7 +39,7 @@ class AppController extends ChangeNotifier {
   String get location => _location;
   DeliveryAddress get deliveryAddress => _deliveryAddress;
   List<DeliveryAddress> get savedAddresses =>
-      List.unmodifiable(_savedAddresses.values);
+      List.unmodifiable(_savedAddresses);
   CheckoutContact get contact => _contact;
   PaymentMethod get paymentMethod => _paymentMethod;
   String? get couponCode => _couponCode;
@@ -86,6 +86,9 @@ class AppController extends ChangeNotifier {
         'quantity',
         'Must be greater than zero.',
       );
+    if (!product.isAvailable) {
+      throw StateError('${product.name} is temporarily unavailable.');
+    }
     final selectedFlavor =
         flavor ?? (product.flavors.isEmpty ? null : product.flavors.first);
     if (selectedFlavor != null && !product.flavors.contains(selectedFlavor)) {
@@ -144,19 +147,37 @@ class AppController extends ChangeNotifier {
         _ => _deliveryAddress.postalCode,
       },
       label: _deliveryAddress.label,
+      id: _deliveryAddress.id,
     );
-    _savedAddresses[_deliveryAddress.label] = _deliveryAddress;
+    _replaceSavedAddress(_deliveryAddress);
     notifyListeners();
   }
 
-  void selectDeliveryAddress(String label) {
-    final address = _savedAddresses[label];
-    if (address == null) {
-      throw ArgumentError.value(label, 'label', 'Choose a saved address.');
+  void _replaceSavedAddress(DeliveryAddress address) {
+    final index = _savedAddresses.indexWhere((saved) => saved.id == address.id);
+    if (index >= 0) _savedAddresses[index] = address;
+  }
+
+  void selectSavedAddress(String id) {
+    final index = _savedAddresses.indexWhere((address) => address.id == id);
+    if (index < 0) {
+      throw ArgumentError.value(id, 'id', 'Choose a saved address.');
     }
+    final address = _savedAddresses[index];
     _deliveryAddress = address;
     _location = '${address.area}, ${address.city}';
     notifyListeners();
+  }
+
+  /// Kept for existing callers that select the first address with a label.
+  void selectDeliveryAddress(String label) {
+    final index = _savedAddresses.indexWhere(
+      (address) => address.label == label,
+    );
+    if (index < 0) {
+      throw ArgumentError.value(label, 'label', 'Choose a saved address.');
+    }
+    selectSavedAddress(_savedAddresses[index].id);
   }
 
   void saveDeliveryAddress(DeliveryAddress address) {
@@ -165,9 +186,22 @@ class AppController extends ChangeNotifier {
         !const {'Home', 'Work', 'Other'}.contains(normalized.label)) {
       throw ArgumentError.value(address, 'address', 'Enter a valid address.');
     }
-    _savedAddresses[normalized.label] = normalized;
-    _deliveryAddress = normalized;
-    _location = '${normalized.area}, ${normalized.city}';
+    final DeliveryAddress saved;
+    if (normalized.id.isEmpty) {
+      saved = normalized.withId('address-${_nextAddressNumber++}');
+      _savedAddresses.add(saved);
+    } else {
+      final index = _savedAddresses.indexWhere(
+        (address) => address.id == normalized.id,
+      );
+      if (index < 0) {
+        throw ArgumentError.value(address, 'address', 'Unknown saved address.');
+      }
+      saved = normalized;
+      _savedAddresses[index] = saved;
+    }
+    _deliveryAddress = saved;
+    _location = '${saved.area}, ${saved.city}';
     notifyListeners();
   }
 
@@ -209,6 +243,17 @@ class AppController extends ChangeNotifier {
     required PaymentMethod paymentMethod,
   }) {
     final discount = couponDiscount;
+    final normalizedAddress = address.normalized;
+    final needsNewAddressId =
+        normalizedAddress.id.isEmpty &&
+        normalizedAddress.label != _deliveryAddress.label;
+    final addressForOrder = normalizedAddress.id.isNotEmpty
+        ? normalizedAddress
+        : normalizedAddress.withId(
+            needsNewAddressId
+                ? 'address-$_nextAddressNumber'
+                : _deliveryAddress.id,
+          );
     final order = _orderRepository.create(
       items: bagLines
           .map(
@@ -220,15 +265,24 @@ class AppController extends ChangeNotifier {
             ),
           )
           .toList(),
-      address: address,
+      address: addressForOrder,
       contact: contact,
       paymentMethod: paymentMethod,
       deliveryFee: deliveryFee,
       discount: discount,
       promoCode: discount > 0 ? _couponCode : null,
     );
+    if (needsNewAddressId) _nextAddressNumber++;
+    final savedAddress = order.address;
+    final savedIndex = _savedAddresses.indexWhere(
+      (address) => address.id == savedAddress.id,
+    );
+    if (savedIndex < 0) {
+      _savedAddresses.add(savedAddress);
+    } else {
+      _savedAddresses[savedIndex] = savedAddress;
+    }
     _deliveryAddress = order.address;
-    _savedAddresses[order.address.label] = order.address;
     _contact = order.contact;
     _paymentMethod = paymentMethod;
     _location = '${order.address.area}, ${order.address.city}';

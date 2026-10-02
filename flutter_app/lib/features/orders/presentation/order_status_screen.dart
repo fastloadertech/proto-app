@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/formatters/currency.dart';
+import '../../../core/formatters/order_date.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/price_summary.dart';
@@ -135,6 +136,11 @@ class _StatusHero extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Placed ${formatOrderDate(order.createdAt)}',
+          style: const TextStyle(color: ProtoColors.muted, fontSize: 12),
         ),
         const SizedBox(height: 28),
         Container(

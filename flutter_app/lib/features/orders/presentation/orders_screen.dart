@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/formatters/currency.dart';
+import '../../../core/formatters/order_date.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_artwork.dart';
@@ -240,7 +241,7 @@ class _OrderCard extends StatelessWidget {
             ),
             const SizedBox(height: 9),
             Text(
-              _orderDate(order.createdAt),
+              formatOrderDate(order.createdAt),
               style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
             ),
             const SizedBox(height: 19),
@@ -345,25 +346,4 @@ class _OrderCard extends StatelessWidget {
       ),
     ),
   );
-}
-
-String _orderDate(DateTime value) {
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  final local = value.toLocal();
-  final hour = local.hour.toString().padLeft(2, '0');
-  final minute = local.minute.toString().padLeft(2, '0');
-  return '${local.day} ${months[local.month - 1]} ${local.year} · $hour:$minute';
 }

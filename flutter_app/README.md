@@ -1,6 +1,6 @@
 # Proto
 
-A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 5 builds on the existing shopping journey with combined local discovery filters, related products, and a fuller customer profile.
+A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 6 builds on the existing shopping journey with immutable order snapshots, a validated delivery lifecycle, and a replaceable order repository.
 
 ## Run
 
@@ -42,7 +42,15 @@ The You tab shows the current demo contact, orders, saved addresses, and saved p
 
 `Pay on delivery`, `UPI demo`, and `Card demo` are local selections. No money is collected, payment service or UPI app is contacted, or real delivery is arranged.
 
-On the status screen, `Advance demo status` manually moves an order through `Order Placed` → `Confirmed` → `Preparing` → `Out for Delivery` → `Delivered`. The button is disabled at the final stage. This is a controlled demo timeline, with no live tracking or automatic courier updates. Neighborhoods, delivery ETAs, product prices, and nutritional details are sample content.
+On the status screen, `Advance demo status` manually moves an order through `Pending` → `Confirmed` → `Preparing` → `Out for Delivery` → `Delivered`. Pending and Confirmed orders can instead be cancelled after confirmation; Cancelled and Delivered are terminal. Skipped and backward transitions are rejected. The reusable timeline reads the order's status history, including cancellation. This is a controlled demo timeline, with no live tracking or automatic courier updates. Neighborhoods, delivery ETAs, product prices, and nutritional details are sample content.
+
+## Day 6 order and delivery foundation
+
+Placing an order captures a stable ID and time, a copied product snapshot with ID, name, selected flavour, quantity, unit price and line subtotal, the delivery fee and final total, contact and address, demo payment method and `Not charged` status, and a sample arrival time. Later catalog or saved-address changes cannot alter an existing order. The bag clears only after the order is created successfully.
+
+`AppController` centralizes order creation, lookup, status updates, cancellation, and demo reset. Order screens depend on the controller rather than a mock list. `OrderRepository` defines the store contract; `MockOrderRepository` is the in-memory implementation, while `LocalOrderRepository` remains available to existing callers. The read methods are asynchronous so order history and details can show loading, retryable errors, empty history, or an unknown order. A later `ApiOrderRepository` can replace the mock behind the controller without changing the screens.
+
+When a demo order reaches Out for Delivery, its repository record gains a mock driver assignment with name, vehicle type/details, contact number, and estimated arrival. `Contact driver` only explains the demo behavior; it does not place a call. The envisioned integration is **Proto customer app → NestJS backend → Loader driver app**, with the backend owning real order, payment, driver-assignment, and delivery status data. Day 6 makes no network requests and does not modify Loader or its backend. All mock orders and driver data disappear when the app session resets.
 
 ## Structure
 
@@ -65,14 +73,14 @@ lib/
     bag/presentation/      Variant quantities, removal, pricing, checkout entry
     checkout/presentation/ Contact, address, payment selection, order submission
     orders/
-      domain/              Order, item, address, contact, payment, and status models
-      data/                In-memory LocalOrderRepository
-      presentation/        Confirmation, status timeline, and order history
+      domain/              Order snapshots, lifecycle, and repository contract
+      data/                In-memory MockOrderRepository
+      presentation/        Confirmation, reusable timeline, and order history
     profile/presentation/  Customer details, saved items, settings, and shortcuts
 test/                      Session-state and customer-journey tests
 ```
 
-Screens share a single `AppController` through the SDK's `ChangeNotifier` and `InheritedNotifier` scope. `DeliveryPricing`, `CouponPricing`, `formatPrice`, and `PriceSummary` keep bag, checkout, and order totals consistent. Local repositories supply catalog data and capture order snapshots; they provide boundaries for future data sources.
+Screens share a single `AppController` through the SDK's `ChangeNotifier` and `InheritedNotifier` scope. `DeliveryPricing`, `CouponPricing`, `formatPrice`, and `PriceSummary` keep bag, checkout, and order totals consistent. Local repositories supply catalog data and capture order snapshots; the order repository contract provides a boundary for a future data source.
 
 The only packages are Flutter and the SDK's `flutter_test`. Flutter supplies navigation, state notifications, animation, forms, and painting. There are no third-party packages, backend services, payment integrations, or Loader integration.
 
@@ -80,7 +88,7 @@ The existing Expo app in the parent directory is preserved independently. Inter 
 
 ## Verification
 
-Day 5 verification with the local Flutter SDK: `flutter analyze` reports no issues, all 67 tests pass, and `flutter build web` succeeds. The Chrome flow was checked through Home, live search and empty results, category and availability filters, price sorting, product details and related products, bag quantity and totals, checkout and demo payment selection, confirmation, order history and details, Profile, and saved addresses. The order-status timeline advanced locally and the bag cleared after placing the order. Desktop and 390 × 844 mobile Chrome views were inspected; widget tests also cover 320 × 640 layouts with enlarged text. Native Android and iOS device runs have not been performed.
+Day 6 verification with the local Flutter SDK: `flutter analyze` reports no issues, all 78 tests pass, and `flutter build web --no-web-resources-cdn` succeeds. Chrome was checked through Home → live search → product details → bag → checkout → saved address → demo payment → order placement → confirmation → order details → Profile → order history → reopened details. The bag cleared after placement, and the order retained its exact amount, address, and status. The timeline advanced manually to Out for Delivery, showing the mock driver assignment and ETA. Desktop and 390 × 844 mobile Chrome views showed no visible overflow; widget tests also cover 320 × 640 and 1440 × 900 order details. Native Android and iOS device runs have not been performed.
 
 Run `flutter analyze` and `flutter test` from this directory for static analysis and the complete test suite. To run the Day 2 state and shopping-flow tests separately:
 
@@ -88,7 +96,7 @@ Run `flutter analyze` and `flutter test` from this directory for static analysis
 flutter test test/shopping_state_test.dart test/shopping_flow_test.dart
 ```
 
-The tests cover login and guest entry; live search and empty results; combined category, availability, price, and product-form filters; sorting; product availability and disabled purchase; related products; favourites and flavour-specific quantities; full variant removal; price, coupon, and delivery-fee boundaries; multiple saved addresses with repeated labels; checkout validation; local order creation and bag clearing; immutable order details and unique IDs; confirmation, history, and five-stage status progression; Profile shortcuts and mock settings/logout; and recoverable empty or unknown-order states. App-level tests exercise search → Buy now → saved address → coupon → order → tracking → history, and guest → listing → details → bag → checkout → address. Layout checks include 320 × 640 and 390 × 844 phone viewports, 640 × 320 landscape, and 1440 × 900 desktop, with a scaled-text navigation check at 320 × 640.
+The tests cover login and guest entry; live search and empty results; combined category, availability, price, and product-form filters; sorting; product availability and disabled purchase; related products; favourites and flavour-specific quantities; full variant removal; price, coupon, and delivery-fee boundaries; multiple saved addresses with repeated labels; checkout validation; local order creation and bag clearing; immutable order snapshots despite later catalog/address changes; unique and stable IDs; captured payment method/status and ETA; valid and rejected lifecycle transitions; cancellation; mock driver assignment; confirmation and history; loading, retryable error, empty, and unknown-order states; Profile shortcuts and mock settings/logout. App-level tests exercise search → Buy now → saved address → coupon → order → tracking → history, and guest → listing → details → bag → checkout → address. Layout checks include 320 × 640 and 390 × 844 phone viewports, 640 × 320 landscape, and 1440 × 900 desktop, with a scaled-text navigation check at 320 × 640.
 
 For Flutter engine renders used in visual review:
 

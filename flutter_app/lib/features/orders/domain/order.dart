@@ -12,28 +12,83 @@ enum PaymentMethod {
   };
 }
 
+enum PaymentStatus {
+  notCharged,
+  pending,
+  paid,
+  failed,
+  refunded;
+
+  String get label => switch (this) {
+    notCharged => 'Not charged · demo',
+    pending => 'Payment pending',
+    paid => 'Paid',
+    failed => 'Payment failed',
+    refunded => 'Refunded',
+  };
+}
+
 enum OrderStatus {
-  orderPlaced,
+  pending,
   confirmed,
   preparing,
   outForDelivery,
-  delivered;
+  delivered,
+  cancelled;
+
+  static const deliveryStages = [
+    pending,
+    confirmed,
+    preparing,
+    outForDelivery,
+    delivered,
+  ];
+
+  bool get canCancel => this == pending || this == confirmed;
+  bool get isTerminal => this == delivered || this == cancelled;
+
+  bool canTransitionTo(OrderStatus next) {
+    if (next == cancelled) return canCancel;
+    final currentIndex = deliveryStages.indexOf(this);
+    return currentIndex >= 0 &&
+        currentIndex < deliveryStages.length - 1 &&
+        deliveryStages[currentIndex + 1] == next;
+  }
 
   String get label => switch (this) {
-    orderPlaced => 'Order Placed',
+    pending => 'Pending',
     confirmed => 'Confirmed',
     preparing => 'Preparing',
     outForDelivery => 'Out for Delivery',
     delivered => 'Delivered',
+    cancelled => 'Cancelled',
   };
 
   String get description => switch (this) {
-    orderPlaced => 'Your fuel is on the list. We have your order.',
+    pending => 'Your fuel is on the list. We have your order.',
     confirmed => 'Your order is confirmed in this local demo.',
     preparing => 'Your essentials are being packed with care.',
     outForDelivery => 'Your bag is on its way to your door.',
     delivered => 'Good fuel, delivered. Keep showing up.',
+    cancelled => 'This demo order has been cancelled.',
   };
+}
+
+/// A replaceable delivery-service snapshot; no driver is contacted in the demo.
+class DeliveryAssignment {
+  const DeliveryAssignment({
+    required this.driverName,
+    required this.vehicleType,
+    required this.vehicleDetails,
+    required this.contactNumber,
+    required this.estimatedArrivalAt,
+  });
+
+  final String driverName;
+  final String vehicleType;
+  final String vehicleDetails;
+  final String contactNumber;
+  final DateTime estimatedArrivalAt;
 }
 
 /// A local delivery destination, kept separately from contact information.
@@ -108,17 +163,43 @@ class CheckoutContact {
 
 /// Unit price and quantity are captured when an order is created.
 class OrderItem {
-  const OrderItem({
-    required this.product,
+  OrderItem({
+    required Product product,
     required this.flavor,
     required this.quantity,
     required this.unitPrice,
-  });
+  }) : product = Product(
+         id: product.id,
+         name: product.name,
+         brand: product.brand,
+         categoryId: product.categoryId,
+         price: product.price,
+         originalPrice: product.originalPrice,
+         weightLabel: product.weightLabel,
+         subtitle: product.subtitle,
+         description: product.description,
+         proteinGrams: product.proteinGrams,
+         servings: product.servings,
+         rating: product.rating,
+         reviewCount: product.reviewCount,
+         badge: product.badge,
+         accentColor: product.accentColor,
+         form: product.form,
+         flavors: List.unmodifiable(product.flavors),
+         isAvailable: product.isAvailable,
+       ),
+       productId = product.id,
+       productName = product.name;
+
+  /// The copied product provides stable artwork without reading the catalog.
   final Product product;
+  final String productId;
+  final String productName;
   final String? flavor;
   final int quantity;
   final double unitPrice;
-  double get total => unitPrice * quantity;
+  double get subtotal => unitPrice * quantity;
+  double get total => subtotal;
 }
 
 class ProtoOrder {
@@ -131,10 +212,14 @@ class ProtoOrder {
     required this.contact,
     required this.paymentMethod,
     required this.deliveryFee,
+    this.paymentStatus = PaymentStatus.notCharged,
     this.discount = 0,
     this.promoCode,
-    this.status = OrderStatus.orderPlaced,
-  }) : items = List.unmodifiable(items);
+    this.status = OrderStatus.pending,
+    List<OrderStatus>? statusHistory,
+    this.deliveryAssignment,
+  }) : items = List.unmodifiable(items),
+       statusHistory = List.unmodifiable(statusHistory ?? [status]);
 
   final String id;
   final DateTime createdAt;
@@ -143,26 +228,42 @@ class ProtoOrder {
   final DeliveryAddress address;
   final CheckoutContact contact;
   final PaymentMethod paymentMethod;
+  final PaymentStatus paymentStatus;
   final double deliveryFee;
   final double discount;
   final String? promoCode;
   final OrderStatus status;
+  final List<OrderStatus> statusHistory;
+  final DeliveryAssignment? deliveryAssignment;
 
   double get subtotal => items.fold(0, (sum, item) => sum + item.total);
   double get total => subtotal + deliveryFee - discount;
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
-  ProtoOrder withStatus(OrderStatus next) => ProtoOrder(
-    id: id,
-    createdAt: createdAt,
-    estimatedDeliveryAt: estimatedDeliveryAt,
-    items: items,
-    address: address,
-    contact: contact,
-    paymentMethod: paymentMethod,
-    deliveryFee: deliveryFee,
-    discount: discount,
-    promoCode: promoCode,
-    status: next,
-  );
+  ProtoOrder withStatus(
+    OrderStatus next, {
+    DeliveryAssignment? deliveryAssignment,
+  }) {
+    if (!status.canTransitionTo(next)) {
+      throw StateError(
+        'Cannot move an order from ${status.label} to ${next.label}.',
+      );
+    }
+    return ProtoOrder(
+      id: id,
+      createdAt: createdAt,
+      estimatedDeliveryAt: estimatedDeliveryAt,
+      items: items,
+      address: address,
+      contact: contact,
+      paymentMethod: paymentMethod,
+      paymentStatus: paymentStatus,
+      deliveryFee: deliveryFee,
+      discount: discount,
+      promoCode: promoCode,
+      status: next,
+      statusHistory: [...statusHistory, next],
+      deliveryAssignment: deliveryAssignment ?? this.deliveryAssignment,
+    );
+  }
 }

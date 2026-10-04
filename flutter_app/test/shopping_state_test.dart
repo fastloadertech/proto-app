@@ -81,7 +81,7 @@ void main() {
       expect(order.total, expectedTotal);
       expect(order.contact.phone, app.contact.phone);
       expect(order.paymentMethod, PaymentMethod.mockUpi);
-      expect(order.status, OrderStatus.orderPlaced);
+      expect(order.status, OrderStatus.pending);
       expect(app.cartCount, 0);
       expect(app.total, 0);
       expect(app.orders, [order]);
@@ -160,12 +160,12 @@ void main() {
     final order = place();
     var updates = 0;
     app.addListener(() => updates++);
-    for (final status in OrderStatus.values.skip(1)) {
+    for (final status in OrderStatus.deliveryStages.skip(1)) {
       expect(app.advanceOrderStatus(order.id)!.status, status);
       expect(app.orderById(order.id)!.status, status);
     }
     expect(updates, 4);
-    expect(order.status, OrderStatus.orderPlaced);
+    expect(order.status, OrderStatus.pending);
     expect(app.advanceOrderStatus(order.id)!.status, OrderStatus.delivered);
     expect(updates, 4);
     expect(app.advanceOrderStatus('unknown'), isNull);

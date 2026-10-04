@@ -8,16 +8,60 @@ import '../../../core/widgets/price_summary.dart';
 import '../../../core/widgets/product_artwork.dart';
 import '../../../core/widgets/proto_button.dart';
 import '../domain/order.dart';
+import 'widgets/order_timeline.dart';
 
 class OrderStatusScreen extends StatelessWidget {
   const OrderStatusScreen({super.key, required this.orderId});
 
   final String orderId;
 
+  void _advance(BuildContext context, AppController app, String id) {
+    try {
+      app.advanceOrderStatus(id);
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message.toString())));
+    }
+  }
+
+  Future<void> _cancel(
+    BuildContext context,
+    AppController app,
+    String id,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this order?'),
+        content: const Text(
+          'This local demo order will stay in your history as cancelled.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep order'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Cancel order'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      app.cancelOrder(id);
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final order = app.orderById(orderId);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Order status')),
@@ -29,61 +73,175 @@ class OrderStatusScreen extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 900),
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-              child: order == null
-                  ? const _UnknownOrder()
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _StatusHero(order: order),
-                        const SizedBox(height: 24),
-                        _StatusTimeline(status: order.status),
-                        const SizedBox(height: 18),
-                        ProtoButton(
-                          label: 'Advance demo status',
-                          icon: Icons.arrow_forward_rounded,
-                          onPressed: order.status == OrderStatus.delivered
-                              ? null
-                              : () => app.advanceOrderStatus(order.id),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          order.status == OrderStatus.delivered
-                              ? 'Demo timeline complete. No real delivery was made.'
-                              : 'You control this demo timeline. No live tracking is connected.',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: ProtoColors.muted,
-                            fontSize: 10,
-                            height: 1.6,
-                          ),
-                        ),
-                        const SizedBox(height: 30),
-                        _OrderContents(order: order),
-                        const SizedBox(height: 18),
-                        _DeliveryDetails(order: order),
-                        const SizedBox(height: 18),
-                        PriceSummary(
-                          subtotal: order.subtotal,
-                          deliveryFee: order.deliveryFee,
-                          discount: order.discount,
-                          title: 'Order summary',
-                        ),
-                        const SizedBox(height: 24),
-                        ProtoButton(
-                          label: 'Continue shopping',
-                          outlined: true,
-                          onPressed: () => Navigator.of(
-                            context,
-                          ).pushNamedAndRemoveUntil('/shop', (_) => false),
-                        ),
-                      ],
+              child: _OrderLoader(
+                orderId: orderId,
+                builder: (order) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _StatusHero(order: order),
+                    const SizedBox(height: 24),
+                    OrderTimeline(order: order),
+                    const SizedBox(height: 18),
+                    ProtoButton(
+                      label: 'Advance demo status',
+                      icon: Icons.arrow_forward_rounded,
+                      onPressed: order.status.isTerminal
+                          ? null
+                          : () => _advance(context, app, order.id),
                     ),
+                    if (order.status.canCancel) ...[
+                      const SizedBox(height: 10),
+                      ProtoButton(
+                        label: 'Cancel order',
+                        outlined: true,
+                        onPressed: () => _cancel(context, app, order.id),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Text(
+                      order.status.isTerminal
+                          ? 'Demo timeline complete. No real delivery was made.'
+                          : 'You control this demo timeline. No live tracking is connected.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: ProtoColors.muted,
+                        fontSize: 10,
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    _OrderContents(order: order),
+                    const SizedBox(height: 18),
+                    _DeliveryDetails(order: order),
+                    if (order.deliveryAssignment != null) ...[
+                      const SizedBox(height: 18),
+                      _DriverDetails(assignment: order.deliveryAssignment!),
+                    ],
+                    const SizedBox(height: 18),
+                    PriceSummary(
+                      subtotal: order.subtotal,
+                      deliveryFee: order.deliveryFee,
+                      discount: order.discount,
+                      title: 'Order summary',
+                    ),
+                    const SizedBox(height: 24),
+                    ProtoButton(
+                      label: 'Continue shopping',
+                      outlined: true,
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pushNamedAndRemoveUntil('/shop', (_) => false),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _OrderLoader extends StatefulWidget {
+  const _OrderLoader({required this.orderId, required this.builder});
+
+  final String orderId;
+  final Widget Function(ProtoOrder) builder;
+
+  @override
+  State<_OrderLoader> createState() => _OrderLoaderState();
+}
+
+class _OrderLoaderState extends State<_OrderLoader> {
+  Future<ProtoOrder?>? _future;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _future ??= AppScope.of(context).loadOrder(widget.orderId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _OrderLoader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.orderId != widget.orderId) {
+      _future = AppScope.of(context).loadOrder(widget.orderId);
+    }
+  }
+
+  void _retry() {
+    setState(() {
+      _future = AppScope.of(context).loadOrder(widget.orderId);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<ProtoOrder?>(
+    future: _future,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const _OrderLoading();
+      }
+      if (snapshot.hasError) return _OrderError(onRetry: _retry);
+      final order = AppScope.of(context).orderById(widget.orderId);
+      return order == null ? const _UnknownOrder() : widget.builder(order);
+    },
+  );
+}
+
+class _OrderLoading extends StatelessWidget {
+  const _OrderLoading();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.symmetric(vertical: 76),
+    child: Column(
+      children: [
+        CircularProgressIndicator(color: ProtoColors.lime),
+        SizedBox(height: 22),
+        Text(
+          'Finding your order…',
+          style: TextStyle(color: ProtoColors.muted, fontSize: 13),
+        ),
+      ],
+    ),
+  );
+}
+
+class _OrderError extends StatelessWidget {
+  const _OrderError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: ProtoColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: ProtoColors.border),
+    ),
+    child: Column(
+      children: [
+        const Icon(Icons.wifi_off_rounded, color: ProtoColors.lime, size: 36),
+        const SizedBox(height: 16),
+        const Text(
+          'Order details are unavailable right now.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Your bag and order history are safe in this session.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: ProtoColors.muted, fontSize: 12),
+        ),
+        const SizedBox(height: 20),
+        ProtoButton(label: 'Try again', onPressed: onRetry),
+      ],
+    ),
+  );
 }
 
 class _StatusHero extends StatelessWidget {
@@ -151,7 +309,7 @@ class _StatusHero extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
           ),
           child: Icon(
-            _statusIcon(order.status),
+            orderStatusIcon(order.status),
             color: ProtoColors.background,
             size: 32,
           ),
@@ -189,7 +347,9 @@ class _StatusHero extends StatelessWidget {
             const SizedBox(width: 9),
             Expanded(
               child: Text(
-                'Sample arrival: ${_arrivalTime(order.estimatedDeliveryAt)}\nNo payment is collected or delivery arranged.',
+                order.status == OrderStatus.cancelled
+                    ? 'Delivery cancelled · No driver was dispatched.'
+                    : 'Sample arrival: ${_arrivalTime(order.estimatedDeliveryAt)}\nNo payment is collected or delivery arranged.',
                 style: const TextStyle(
                   color: ProtoColors.muted,
                   fontSize: 11,
@@ -198,130 +358,6 @@ class _StatusHero extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ],
-    ),
-  );
-}
-
-class _StatusTimeline extends StatelessWidget {
-  const _StatusTimeline({required this.status});
-
-  final OrderStatus status;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(22, 22, 22, 10),
-    decoration: BoxDecoration(
-      color: ProtoColors.surface,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: ProtoColors.border),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Demo timeline',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 24),
-        for (final step in OrderStatus.values)
-          _TimelineStep(
-            step: step,
-            completed: step.index < status.index,
-            active: step == status,
-            last: step == OrderStatus.delivered,
-          ),
-      ],
-    ),
-  );
-}
-
-class _TimelineStep extends StatelessWidget {
-  const _TimelineStep({
-    required this.step,
-    required this.completed,
-    required this.active,
-    required this.last,
-  });
-
-  final OrderStatus step;
-  final bool completed, active, last;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 34,
-          child: Column(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: active || completed
-                      ? ProtoColors.lime
-                      : ProtoColors.elevated,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: active || completed
-                        ? ProtoColors.lime
-                        : ProtoColors.border,
-                  ),
-                ),
-                child: Icon(
-                  completed ? Icons.check_rounded : _statusIcon(step),
-                  color: active || completed
-                      ? ProtoColors.background
-                      : ProtoColors.muted,
-                  size: 17,
-                ),
-              ),
-              if (!last) ...[
-                const SizedBox(height: 6),
-                Container(
-                  width: 2,
-                  height: 26,
-                  color: completed ? ProtoColors.lime : ProtoColors.border,
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(width: 15),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 4),
-              Text(
-                step.label,
-                style: TextStyle(
-                  color: active || completed
-                      ? ProtoColors.text
-                      : ProtoColors.muted,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                active
-                    ? 'Current demo stage'
-                    : completed
-                    ? 'Completed in demo'
-                    : 'Next in the demo timeline',
-                style: TextStyle(
-                  color: active ? ProtoColors.lime : ProtoColors.muted,
-                  fontSize: 10,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
         ),
       ],
     ),
@@ -387,7 +423,7 @@ class _ItemRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              item.product.name,
+              item.productName,
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -407,9 +443,25 @@ class _ItemRow extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              formatPrice(item.total),
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            Wrap(
+              spacing: 10,
+              runSpacing: 4,
+              children: [
+                Text(
+                  '${formatPrice(item.unitPrice)} each',
+                  style: const TextStyle(
+                    color: ProtoColors.muted,
+                    fontSize: 11,
+                  ),
+                ),
+                Text(
+                  formatPrice(item.subtotal),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -478,16 +530,90 @@ class _DeliveryDetails extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                '${order.paymentMethod.label}\nDemo selection · No charge made',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: ProtoColors.muted,
-                  height: 1.7,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    order.paymentMethod.label,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Payment status · ${order.paymentStatus.label}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: ProtoColors.muted,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _DriverDetails extends StatelessWidget {
+  const _DriverDetails({required this.assignment});
+
+  final DeliveryAssignment assignment;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: ProtoColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: ProtoColors.lime.withValues(alpha: .25)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.delivery_dining_rounded, color: ProtoColors.lime),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Driver assigned',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          assignment.driverName,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${assignment.vehicleType} · ${assignment.vehicleDetails}',
+          style: const TextStyle(color: ProtoColors.muted, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Estimated arrival · ${_arrivalTime(assignment.estimatedArrivalAt)}',
+          style: const TextStyle(fontSize: 12, color: ProtoColors.lime),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Demo contact · ${assignment.contactNumber}',
+          style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
+        ),
+        const SizedBox(height: 18),
+        ProtoButton(
+          label: 'Contact driver',
+          outlined: true,
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Driver contact is a local preview. No call was placed.',
+              ),
+            ),
+          ),
         ),
       ],
     ),
@@ -544,14 +670,6 @@ class _UnknownOrder extends StatelessWidget {
     ),
   );
 }
-
-IconData _statusIcon(OrderStatus status) => switch (status) {
-  OrderStatus.orderPlaced => Icons.receipt_long_outlined,
-  OrderStatus.confirmed => Icons.verified_outlined,
-  OrderStatus.preparing => Icons.inventory_2_outlined,
-  OrderStatus.outForDelivery => Icons.delivery_dining_rounded,
-  OrderStatus.delivered => Icons.check_rounded,
-};
 
 String _arrivalTime(DateTime value) {
   final local = value.toLocal();

@@ -169,7 +169,7 @@ void main() {
       expect(order.deliveryFee, 0);
       expect(order.total, expected);
       expect(order.address.label, 'Work');
-      expect(order.status, OrderStatus.orderPlaced);
+      expect(order.status, OrderStatus.pending);
       expect(app.bagLines, isEmpty);
       expect(app.couponCode, isNull);
       expect(app.couponDiscount, 0);

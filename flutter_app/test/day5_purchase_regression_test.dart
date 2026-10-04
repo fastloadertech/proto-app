@@ -120,7 +120,7 @@ void main() {
     expect(find.byType(OrderStatusScreen), findsOneWidget);
     expect(find.text(product.name), findsOneWidget);
     expect(find.text(order.address.formatted), findsOneWidget);
-    expect(app.orderById(order.id)?.status, OrderStatus.orderPlaced);
+    expect(app.orderById(order.id)?.status, OrderStatus.pending);
     expect(tester.takeException(), isNull);
   });
 }

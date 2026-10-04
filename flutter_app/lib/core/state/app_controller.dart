@@ -5,13 +5,14 @@ import 'package:flutter/material.dart';
 import '../../features/catalog/domain/product.dart';
 import '../../features/orders/data/local_order_repository.dart';
 import '../../features/orders/domain/order.dart';
+import '../../features/orders/domain/order_repository.dart';
 import 'coupon_pricing.dart';
 import 'delivery_pricing.dart';
 
 /// Customer session state. All catalog, bag, and order data stays local.
 class AppController extends ChangeNotifier {
-  AppController({LocalOrderRepository? orderRepository})
-    : _orderRepository = orderRepository ?? LocalOrderRepository();
+  AppController({OrderRepository? orderRepository})
+    : _orderRepository = orderRepository ?? MockOrderRepository();
 
   static const DeliveryAddress _initialAddress = DeliveryAddress(
     line1: '42, First Main Road',
@@ -21,7 +22,7 @@ class AppController extends ChangeNotifier {
     id: 'address-1',
   );
 
-  final LocalOrderRepository _orderRepository;
+  final OrderRepository _orderRepository;
   final Map<(String, String?), BagLine> _bag = {};
   final Set<String> _savedIds = {};
   final List<DeliveryAddress> _savedAddresses = [_initialAddress];
@@ -46,6 +47,8 @@ class AppController extends ChangeNotifier {
   String? get couponMessage => _couponMessage;
   List<ProtoOrder> get orders => _orderRepository.orders;
   ProtoOrder? orderById(String id) => _orderRepository.getById(id);
+  Future<List<ProtoOrder>> loadOrders() => _orderRepository.loadOrders();
+  Future<ProtoOrder?> loadOrder(String id) => _orderRepository.loadById(id);
   int get cartCount =>
       _bag.values.fold(0, (total, line) => total + line.quantity);
   List<BagLine> get bagLines => List.unmodifiable(_bag.values);
@@ -298,6 +301,22 @@ class AppController extends ChangeNotifier {
     final updated = _orderRepository.advanceStatus(id);
     if (updated != previous) notifyListeners();
     return updated;
+  }
+
+  ProtoOrder? updateOrderStatus(String id, OrderStatus next) {
+    final previous = orderById(id);
+    final updated = _orderRepository.updateStatus(id, next);
+    if (updated != previous) notifyListeners();
+    return updated;
+  }
+
+  ProtoOrder? cancelOrder(String id) =>
+      updateOrderStatus(id, OrderStatus.cancelled);
+
+  void resetDemoOrders() {
+    if (_orderRepository.orders.isEmpty) return;
+    _orderRepository.reset();
+    notifyListeners();
   }
 }
 

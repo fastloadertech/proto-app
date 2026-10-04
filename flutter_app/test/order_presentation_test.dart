@@ -93,7 +93,7 @@ void main() {
     );
 
     expect(find.text(placed.id), findsOneWidget);
-    expect(find.text('Order Placed'), findsOneWidget);
+    expect(find.text('Pending'), findsOneWidget);
     expect(find.text('Delivery fee'), findsWidgets);
     expect(find.text('Discount'), findsOneWidget);
     expect(find.text('PROTO150'), findsOneWidget);
@@ -120,14 +120,14 @@ void main() {
     expect(find.text('Next in the demo timeline'), findsNWidgets(4));
     expect(find.text('Completed in demo'), findsNothing);
     expect(find.text('Confirmed'), findsOneWidget);
-    for (final next in OrderStatus.values.skip(1)) {
+    for (final next in OrderStatus.deliveryStages.skip(1)) {
       await _tapVisible(tester, find.text('Advance demo status'));
       expect(controller.orderById(placed.id)!.status, next);
       expect(find.text('Current demo stage'), findsOneWidget);
       expect(find.text('Completed in demo'), findsNWidgets(next.index));
       expect(
         find.text('Next in the demo timeline'),
-        findsNWidgets(OrderStatus.values.length - next.index - 1),
+        findsNWidgets(OrderStatus.deliveryStages.length - next.index - 1),
       );
     }
     final button = tester.widget<ProtoButton>(
@@ -152,7 +152,7 @@ void main() {
     expect(find.text(first.id), findsOneWidget);
     expect(find.text(newest.id), findsOneWidget);
     expect(find.text('View details'), findsNWidgets(2));
-    expect(find.text('Order Placed'), findsNWidgets(2));
+    expect(find.text('Pending'), findsNWidgets(2));
     final newestY = tester.getTopLeft(find.text(newest.id)).dy;
     final firstY = tester.getTopLeft(find.text(first.id)).dy;
     expect(newestY, lessThan(firstY));

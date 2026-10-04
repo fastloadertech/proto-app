@@ -216,7 +216,7 @@ void main() {
 
     await _tap(tester, find.text('Track order'));
     expect(find.byType(OrderStatusScreen), findsOneWidget);
-    for (final next in OrderStatus.values.skip(1)) {
+    for (final next in OrderStatus.deliveryStages.skip(1)) {
       await _tap(tester, find.text('Advance demo status'));
       expect(app.orderById(order.id)!.status, next);
       expect(find.text(next.label), findsNWidgets(2));

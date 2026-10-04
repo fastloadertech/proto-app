@@ -1,7 +1,8 @@
 import '../domain/order.dart';
+import '../domain/order_repository.dart';
 
 /// In-memory mock order store. No network, persistence, or payment processing.
-class LocalOrderRepository {
+class LocalOrderRepository implements OrderRepository {
   LocalOrderRepository({DateTime Function()? clock})
     : _clock = clock ?? DateTime.now;
 
@@ -9,8 +10,10 @@ class LocalOrderRepository {
   final List<ProtoOrder> _orders = [];
   int _sequence = 0;
 
+  @override
   List<ProtoOrder> get orders => List.unmodifiable(_orders);
 
+  @override
   ProtoOrder? getById(String id) {
     for (final order in _orders) {
       if (order.id == id) return order;
@@ -18,6 +21,13 @@ class LocalOrderRepository {
     return null;
   }
 
+  @override
+  Future<List<ProtoOrder>> loadOrders() async => orders;
+
+  @override
+  Future<ProtoOrder?> loadById(String id) async => getById(id);
+
+  @override
   ProtoOrder create({
     required List<OrderItem> items,
     required DeliveryAddress address,
@@ -64,15 +74,46 @@ class LocalOrderRepository {
     return order;
   }
 
-  ProtoOrder? advanceStatus(String id) {
+  @override
+  ProtoOrder? updateStatus(String id, OrderStatus next) {
     final index = _orders.indexWhere((order) => order.id == id);
     if (index < 0) return null;
     final current = _orders[index];
-    if (current.status == OrderStatus.delivered) return current;
-    final next = current.withStatus(
-      OrderStatus.values[current.status.index + 1],
+    if (current.status == next) return current;
+    final updated = current.withStatus(
+      next,
+      deliveryAssignment: next == OrderStatus.outForDelivery
+          ? DeliveryAssignment(
+              driverName: 'Aarav Kumar',
+              vehicleType: 'Electric scooter',
+              vehicleDetails: 'KA 03 AB 2468',
+              contactNumber: '9000000000',
+              estimatedArrivalAt: current.estimatedDeliveryAt,
+            )
+          : null,
     );
-    _orders[index] = next;
-    return next;
+    _orders[index] = updated;
+    return updated;
   }
+
+  @override
+  ProtoOrder? advanceStatus(String id) {
+    final current = getById(id);
+    if (current == null) return null;
+    if (current.status.isTerminal) return current;
+    final currentIndex = OrderStatus.deliveryStages.indexOf(current.status);
+    return updateStatus(id, OrderStatus.deliveryStages[currentIndex + 1]);
+  }
+
+  @override
+  ProtoOrder? cancel(String id) => updateStatus(id, OrderStatus.cancelled);
+
+  @override
+  void reset() => _orders.clear();
+}
+
+/// Preferred name for the in-memory implementation; the old name remains for
+/// existing callers and tests.
+class MockOrderRepository extends LocalOrderRepository {
+  MockOrderRepository({super.clock});
 }

@@ -21,7 +21,7 @@ class OrderConfirmationScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final order = AppScope.of(context).orderById(orderId);
     return Scaffold(
-      appBar: AppBar(title: const Text('Order confirmed')),
+      appBar: AppBar(title: const Text('Order placed')),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
@@ -113,7 +113,7 @@ class OrderConfirmationScreen extends StatelessWidget {
       ),
       const SizedBox(height: 12),
       Text(
-        'Thanks, ${order.contact.name.split(' ').first}. Your demo order is confirmed.',
+        'Thanks, ${order.contact.name.split(' ').first}. Your demo order was placed.',
         textAlign: TextAlign.center,
         style: const TextStyle(
           color: ProtoColors.muted,
@@ -149,6 +149,11 @@ class OrderConfirmationScreen extends StatelessWidget {
             _ConfirmationDetail(
               label: 'Payment',
               value: order.paymentMethod.label,
+            ),
+            const SizedBox(height: 14),
+            _ConfirmationDetail(
+              label: 'Payment status',
+              value: order.paymentStatus.label,
             ),
             const SizedBox(height: 14),
             _ConfirmationDetail(label: 'Items', value: '${order.itemCount}'),
@@ -264,7 +269,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          order.items[i].product.name,
+                          order.items[i].productName,
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -280,6 +285,14 @@ class OrderConfirmationScreen extends StatelessWidget {
                             ),
                           ),
                         ],
+                        const SizedBox(height: 5),
+                        Text(
+                          '${formatPrice(order.items[i].unitPrice)} each',
+                          style: const TextStyle(
+                            color: ProtoColors.muted,
+                            fontSize: 11,
+                          ),
+                        ),
                       ],
                     ),
                   ),

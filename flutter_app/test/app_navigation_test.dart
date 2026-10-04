@@ -215,9 +215,20 @@ void main() {
     final product = tester
         .widget<ProductDetailScreen>(find.byType(ProductDetailScreen))
         .product;
-    await tester.tap(find.byTooltip('Save product'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byTooltip('Save product'),
+      ),
+    );
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Remove from saved'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byTooltip('Remove from saved'),
+      ),
+      findsOneWidget,
+    );
 
     await _goBack(tester);
     await _goBack(tester);
@@ -242,7 +253,13 @@ void main() {
           .id,
       product.id,
     );
-    expect(find.byTooltip('Remove from saved'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byTooltip('Remove from saved'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

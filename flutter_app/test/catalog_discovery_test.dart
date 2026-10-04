@@ -6,6 +6,7 @@ import 'package:proto/core/theme/proto_theme.dart';
 import 'package:proto/core/widgets/product_card.dart';
 import 'package:proto/features/catalog/data/local_catalog_repository.dart';
 import 'package:proto/features/catalog/domain/product.dart';
+import 'package:proto/features/catalog/presentation/categories_screen.dart';
 import 'package:proto/features/catalog/presentation/product_detail_screen.dart';
 import 'package:proto/features/catalog/presentation/product_listing_screen.dart';
 
@@ -40,6 +41,13 @@ Future<void> _showScreen(
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(
+      finder,
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+  }
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
@@ -75,6 +83,28 @@ void main() {
     expect(
       LocalCatalogRepository.search('  ').length,
       LocalCatalogRepository.products.length,
+    );
+  });
+
+  test('availability combines with category, search and sorting', () {
+    final available = LocalCatalogRepository.browse(availableOnly: true);
+    expect(available, isNotEmpty);
+    expect(available.every((product) => product.isAvailable), isTrue);
+    expect(available.length, LocalCatalogRepository.products.length - 1);
+    expect(
+      LocalCatalogRepository.browse(
+        categoryId: 'snacks',
+        availableOnly: true,
+        sort: CatalogSort.priceLow,
+      ).map((product) => product.id),
+      ['crunch-protein-bar'],
+    );
+    expect(
+      LocalCatalogRepository.browse(
+        query: 'Peanut Butter Bites',
+        availableOnly: true,
+      ),
+      isEmpty,
     );
   });
 
@@ -159,6 +189,86 @@ void main() {
         .map((card) => card.product.name)
         .toList();
     expect(cardNames, orderedEquals(List<String>.of(cardNames)..sort()));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('listing filters category and availability, then resets them', (
+    tester,
+  ) async {
+    _viewport(tester, const Size(390, 844));
+    await _showScreen(tester, AppController(), const ProductListingScreen());
+
+    await _tap(tester, find.text('Filters'));
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Smart snacks'));
+    await _tap(tester, find.widgetWithText(SwitchListTile, 'Available only'));
+    await _tap(tester, find.text('Show products'));
+    expect(find.text('1 essential'), findsOneWidget);
+    expect(
+      tester.widget<ProductCard>(find.byType(ProductCard)).product.id,
+      'crunch-protein-bar',
+    );
+    expect(find.text('Filters (1)'), findsOneWidget);
+
+    await _tap(tester, find.text('Filters (1)'));
+    await _tap(tester, find.text('Clear filters'));
+    await _tap(tester, find.text('Show products'));
+    expect(
+      find.text('${LocalCatalogRepository.products.length} essentials'),
+      findsOneWidget,
+    );
+    expect(find.text('Filters'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('live search shows empty state and clears back to all products', (
+    tester,
+  ) async {
+    _viewport(tester, const Size(390, 844));
+    await _showScreen(tester, AppController(), const ProductListingScreen());
+
+    await tester.enterText(find.byType(TextField), 'no-such-proto-product');
+    await tester.pumpAndSettle();
+    expect(find.text('No fuel found just yet.'), findsOneWidget);
+    expect(find.byType(ProductCard), findsNothing);
+    await _tap(tester, find.byTooltip('Clear search'));
+    expect(find.text('No fuel found just yet.'), findsNothing);
+    expect(
+      find.text('${LocalCatalogRepository.products.length} essentials'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('categories remain usable with enlarged text on narrow screens', (
+    tester,
+  ) async {
+    _viewport(tester, const Size(320, 640));
+    tester.binding.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(
+      tester.binding.platformDispatcher.clearTextScaleFactorTestValue,
+    );
+    await _showScreen(tester, AppController(), const CategoriesScreen());
+    expect(find.text('Shop the essentials'), findsOneWidget);
+    await _tap(tester, find.text('Protein'));
+    expect(find.byType(ProductListingScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('filters and sort remain usable with enlarged text', (
+    tester,
+  ) async {
+    _viewport(tester, const Size(320, 640));
+    tester.binding.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(
+      tester.binding.platformDispatcher.clearTextScaleFactorTestValue,
+    );
+    await _showScreen(tester, AppController(), const ProductListingScreen());
+    await _tap(tester, find.text('Filters'));
+    await _tap(tester, find.widgetWithText(SwitchListTile, 'Available only'));
+    await _tap(tester, find.text('Show products'));
+    await _tap(tester, find.text('Recommended'));
+    await _tap(tester, find.text('Price: high to low'));
+    expect(find.text('Price: high to low'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -4,6 +4,8 @@ import '../../../core/formatters/currency.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_artwork.dart';
+import '../../../core/widgets/product_card.dart';
+import '../../../core/widgets/section_heading.dart';
 import '../data/local_catalog_repository.dart';
 import '../domain/product.dart';
 import 'product_listing_screen.dart';
@@ -48,6 +50,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) {
     final product = widget.product;
     final controller = AppScope.of(context);
+    final relatedProducts = LocalCatalogRepository.products
+        .where(
+          (candidate) =>
+              candidate.id != product.id &&
+              candidate.categoryId == product.categoryId,
+        )
+        .take(3)
+        .toList();
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) => Scaffold(
@@ -157,6 +167,47 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           );
                         },
                       ),
+                      if (relatedProducts.isNotEmpty) ...[
+                        const SizedBox(height: 40),
+                        const Divider(color: ProtoColors.border),
+                        const SizedBox(height: 28),
+                        SectionHeading(
+                          title: 'Keep the momentum',
+                          subtitle: 'More fuel from this category.',
+                          actionLabel: 'See all',
+                          onAction: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ProductListingScreen(
+                                categoryId: product.categoryId,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          height: ProductCard.gridExtent(context, 216),
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: relatedProducts.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 14),
+                            itemBuilder: (context, index) {
+                              final related = relatedProducts[index];
+                              return SizedBox(
+                                width: 216,
+                                child: ProductCard(
+                                  product: related,
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          ProductDetailScreen(product: related),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

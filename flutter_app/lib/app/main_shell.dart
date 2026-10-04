@@ -47,6 +47,9 @@ class _MainShellState extends State<MainShell> {
                           LoginScreen(onContinue: () => Navigator.pop(context)),
                     ),
                   ),
+                  onLogout: () => Navigator.of(
+                    context,
+                  ).pushNamedAndRemoveUntil('/login', (_) => false),
                 ),
               ],
             ),

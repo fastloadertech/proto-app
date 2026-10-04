@@ -358,11 +358,13 @@ class LocalCatalogRepository {
     double? minPrice,
     double? maxPrice,
     ProductForm? form,
+    bool availableOnly = false,
     CatalogSort sort = CatalogSort.recommended,
   }) {
     final terms = query.toLowerCase().trim().split(RegExp(r'\s+'));
     final hasQuery = query.trim().isNotEmpty;
     final matches = products.where((product) {
+      if (availableOnly && !product.isAvailable) return false;
       if (categoryId != null &&
           categoryId != 'all' &&
           categoryId.isNotEmpty &&

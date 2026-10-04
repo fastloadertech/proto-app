@@ -42,6 +42,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
   CatalogSort _sort = CatalogSort.recommended;
   _PriceBand? _priceBand;
   ProductForm? _form;
+  bool _availableOnly = false;
 
   @override
   void initState() {
@@ -69,6 +70,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
     minPrice: _priceBand?.min,
     maxPrice: _priceBand?.max,
     form: _form,
+    availableOnly: _availableOnly,
     sort: _sort,
   );
 
@@ -89,7 +91,9 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
   };
 
   int get _activeFilterCount =>
-      (_priceBand == null ? 0 : 1) + (_form == null ? 0 : 1);
+      (_priceBand == null ? 0 : 1) +
+      (_form == null ? 0 : 1) +
+      (_availableOnly ? 1 : 0);
 
   Future<void> _showSort() async {
     final selected = await showModalBottomSheet<CatalogSort>(
@@ -143,10 +147,19 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
   }
 
   Future<void> _showFilters() async {
+    var selectedCategory = _categoryId;
     var selectedPrice = _priceBand;
     var selectedForm = _form;
+    var selectedAvailableOnly = _availableOnly;
     final result =
-        await showModalBottomSheet<({_PriceBand? price, ProductForm? form})>(
+        await showModalBottomSheet<
+          ({
+            String? category,
+            _PriceBand? price,
+            ProductForm? form,
+            bool availableOnly,
+          })
+        >(
           context: context,
           isScrollControlled: true,
           backgroundColor: ProtoColors.surface,
@@ -173,13 +186,58 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Choose a price and product type.',
+                        'Choose a category, availability, price and type.',
                         style: TextStyle(
                           color: ProtoColors.muted,
                           fontSize: 13,
                         ),
                       ),
                       const SizedBox(height: 22),
+                      const Text(
+                        'CATEGORY',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _FilterChip(
+                            label: 'All categories',
+                            selected: selectedCategory == null,
+                            onTap: () =>
+                                updateSheet(() => selectedCategory = null),
+                          ),
+                          for (final category
+                              in LocalCatalogRepository.categories)
+                            _FilterChip(
+                              label: category.title,
+                              selected: selectedCategory == category.id,
+                              onTap: () => updateSheet(
+                                () => selectedCategory = category.id,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Available only'),
+                        subtitle: const Text(
+                          'Show products ready to order',
+                          style: TextStyle(color: ProtoColors.muted),
+                        ),
+                        value: selectedAvailableOnly,
+                        activeThumbColor: ProtoColors.lime,
+                        onChanged: (value) =>
+                            updateSheet(() => selectedAvailableOnly = value),
+                      ),
+                      const SizedBox(height: 24),
                       const Text(
                         'PRICE RANGE',
                         style: TextStyle(
@@ -243,17 +301,22 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                         children: [
                           TextButton(
                             onPressed: () => updateSheet(() {
+                              selectedCategory = null;
                               selectedPrice = null;
                               selectedForm = null;
+                              selectedAvailableOnly = false;
                             }),
                             child: const Text('Clear filters'),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: FilledButton(
-                              onPressed: () => Navigator.of(
-                                context,
-                              ).pop((price: selectedPrice, form: selectedForm)),
+                              onPressed: () => Navigator.of(context).pop((
+                                category: selectedCategory,
+                                price: selectedPrice,
+                                form: selectedForm,
+                                availableOnly: selectedAvailableOnly,
+                              )),
                               style: FilledButton.styleFrom(
                                 backgroundColor: ProtoColors.lime,
                                 foregroundColor: ProtoColors.background,
@@ -273,8 +336,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
         );
     if (result != null && mounted) {
       setState(() {
+        _categoryId = result.category;
         _priceBand = result.price;
         _form = result.form;
+        _availableOnly = result.availableOnly;
       });
     }
   }
@@ -286,6 +351,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
       _sort = CatalogSort.recommended;
       _priceBand = null;
       _form = null;
+      _availableOnly = false;
     });
   }
 
@@ -554,6 +620,16 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                                 InputChip(
                                   label: Text(_formLabel(_form!)),
                                   onDeleted: () => setState(() => _form = null),
+                                  deleteIcon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                  ),
+                                ),
+                              if (_availableOnly)
+                                InputChip(
+                                  label: const Text('Available only'),
+                                  onDeleted: () =>
+                                      setState(() => _availableOnly = false),
                                   deleteIcon: const Icon(
                                     Icons.close_rounded,
                                     size: 16,

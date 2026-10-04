@@ -4,7 +4,6 @@ import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_card.dart';
 import '../../../core/widgets/proto_button.dart';
-import '../../catalog/data/local_catalog_repository.dart';
 import '../../catalog/presentation/product_detail_screen.dart';
 import 'profile_settings_screen.dart';
 
@@ -101,6 +100,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         TextButton(
           onPressed: () {
+            AppScope.of(context).signOutDemo();
             Navigator.of(dialogContext).pop();
             (widget.onLogout ?? widget.onSignIn)();
           },
@@ -113,7 +113,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final saved = LocalCatalogRepository.products
+    final saved = app.catalog.products
         .where((product) => app.isSaved(product.id))
         .toList();
     return CustomScrollView(

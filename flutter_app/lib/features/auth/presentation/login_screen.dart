@@ -9,9 +9,10 @@ import '../../../core/widgets/proto_button.dart';
 
 /// Local, explicit demo sign-in; no authentication service is connected.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onContinue});
+  const LoginScreen({super.key, required this.onContinue, this.onDemoSignIn});
 
   final VoidCallback onContinue;
+  final Future<void> Function(String phone)? onDemoSignIn;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -98,7 +99,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: ProtoButton(
                   label: 'Enter Proto',
                   icon: Icons.arrow_forward_rounded,
-                  onPressed: () {
+                  onPressed: () async {
+                    if (widget.onDemoSignIn != null) {
+                      await widget.onDemoSignIn!(_phoneController.text);
+                    }
+                    if (!sheetContext.mounted) return;
                     Navigator.of(sheetContext).pop();
                     widget.onContinue();
                   },

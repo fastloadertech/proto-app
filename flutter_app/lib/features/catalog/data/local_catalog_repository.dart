@@ -1,8 +1,46 @@
 import 'package:flutter/material.dart';
 
 import '../domain/product.dart';
+import '../domain/catalog_repository.dart';
+export '../domain/catalog_repository.dart' show CatalogSort;
 
-enum CatalogSort { recommended, priceLow, priceHigh, name, popular, topRated }
+/// Instance adapter for the existing static local catalog. Static entry points
+/// remain available to Day 1–6 callers and tests.
+class LocalCatalogSource implements CatalogRepository {
+  const LocalCatalogSource();
+
+  @override
+  List<ProductCategory> get categories => LocalCatalogRepository.categories;
+  @override
+  List<Product> get products => LocalCatalogRepository.products;
+  @override
+  List<Product> get featuredProducts => LocalCatalogRepository.featuredProducts;
+  @override
+  List<Product> get popularProducts => LocalCatalogRepository.popularProducts;
+  @override
+  Product? getById(String id) => LocalCatalogRepository.getById(id);
+  @override
+  List<Product> byCategory(String categoryId) =>
+      LocalCatalogRepository.byCategory(categoryId);
+  @override
+  List<Product> browse({
+    String query = '',
+    String? categoryId,
+    double? minPrice,
+    double? maxPrice,
+    ProductForm? form,
+    bool availableOnly = false,
+    CatalogSort sort = CatalogSort.recommended,
+  }) => LocalCatalogRepository.browse(
+    query: query,
+    categoryId: categoryId,
+    minPrice: minPrice,
+    maxPrice: maxPrice,
+    form: form,
+    availableOnly: availableOnly,
+    sort: sort,
+  );
+}
 
 /// A local, deterministic catalog for the customer experience.
 ///

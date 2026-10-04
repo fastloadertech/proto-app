@@ -43,8 +43,10 @@ class _MainShellState extends State<MainShell> {
                   onBrowse: () => _select(0),
                   onSignIn: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (context) =>
-                          LoginScreen(onContinue: () => Navigator.pop(context)),
+                      builder: (context) => LoginScreen(
+                        onDemoSignIn: AppScope.of(context).signInDemo,
+                        onContinue: () => Navigator.pop(context),
+                      ),
                     ),
                   ),
                   onLogout: () => Navigator.of(

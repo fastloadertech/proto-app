@@ -2,7 +2,7 @@ import '../domain/order.dart';
 import '../domain/order_repository.dart';
 
 /// In-memory mock order store. No network, persistence, or payment processing.
-class LocalOrderRepository implements OrderRepository {
+class LocalOrderRepository implements OrderRepository, AsyncOrderRepository {
   LocalOrderRepository({DateTime Function()? clock})
     : _clock = clock ?? DateTime.now;
 
@@ -75,6 +75,25 @@ class LocalOrderRepository implements OrderRepository {
   }
 
   @override
+  Future<ProtoOrder> createAsync({
+    required List<OrderItem> items,
+    required DeliveryAddress address,
+    required CheckoutContact contact,
+    required PaymentMethod paymentMethod,
+    required double deliveryFee,
+    double discount = 0,
+    String? promoCode,
+  }) async => create(
+    items: items,
+    address: address,
+    contact: contact,
+    paymentMethod: paymentMethod,
+    deliveryFee: deliveryFee,
+    discount: discount,
+    promoCode: promoCode,
+  );
+
+  @override
   ProtoOrder? updateStatus(String id, OrderStatus next) {
     final index = _orders.indexWhere((order) => order.id == id);
     if (index < 0) return null;
@@ -84,6 +103,7 @@ class LocalOrderRepository implements OrderRepository {
       next,
       deliveryAssignment: next == OrderStatus.outForDelivery
           ? DeliveryAssignment(
+              deliveryJobId: 'DEMO-${current.id}',
               driverName: 'Aarav Kumar',
               vehicleType: 'Electric scooter',
               vehicleDetails: 'KA 03 AB 2468',

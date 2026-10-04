@@ -58,13 +58,13 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
   }
 
   String get _title {
-    for (final category in LocalCatalogRepository.categories) {
+    for (final category in AppScope.of(context).catalog.categories) {
       if (category.id == _categoryId) return category.title;
     }
     return 'The Proto store';
   }
 
-  List<Product> get _products => LocalCatalogRepository.browse(
+  List<Product> get _products => AppScope.of(context).catalog.browse(
     query: _search.text,
     categoryId: _categoryId,
     minPrice: _priceBand?.min,
@@ -213,8 +213,9 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                             onTap: () =>
                                 updateSheet(() => selectedCategory = null),
                           ),
-                          for (final category
-                              in LocalCatalogRepository.categories)
+                          for (final category in AppScope.of(
+                            context,
+                          ).catalog.categories)
                             _FilterChip(
                               label: category.title,
                               selected: selectedCategory == category.id,
@@ -528,8 +529,9 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                                 selected: _categoryId == null,
                                 onTap: () => setState(() => _categoryId = null),
                               ),
-                              for (final category
-                                  in LocalCatalogRepository.categories) ...[
+                              for (final category in AppScope.of(
+                                context,
+                              ).catalog.categories) ...[
                                 const SizedBox(width: 8),
                                 _CategoryChip(
                                   label: category.title,

@@ -38,6 +38,7 @@ class _ProtoAppState extends State<ProtoApp> {
               Navigator.of(context).pushReplacementNamed('/login'),
         ),
         '/login': (context) => LoginScreen(
+          onDemoSignIn: AppScope.of(context).signInDemo,
           onContinue: () => Navigator.of(
             context,
           ).pushNamedAndRemoveUntil('/shop', (_) => false),

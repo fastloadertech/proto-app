@@ -116,7 +116,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
-      final order = app.placeOrder(
+      final order = await app.submitOrder(
         address: address,
         contact: contact,
         paymentMethod: paymentMethod,
@@ -142,6 +142,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _error =
               error.message?.toString() ??
               'Please check your details and try again.';
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _placingOrder = false;
+          _error = error.toString();
         });
       }
     }

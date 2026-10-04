@@ -6,7 +6,6 @@ import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_artwork.dart';
 import '../../../core/widgets/product_card.dart';
 import '../../../core/widgets/section_heading.dart';
-import '../data/local_catalog_repository.dart';
 import '../domain/product.dart';
 import 'product_listing_screen.dart';
 
@@ -50,7 +49,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) {
     final product = widget.product;
     final controller = AppScope.of(context);
-    final relatedProducts = LocalCatalogRepository.products
+    final relatedProducts = controller.catalog.products
         .where(
           (candidate) =>
               candidate.id != product.id &&
@@ -311,7 +310,7 @@ class _ProductInformation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final category = LocalCatalogRepository.categories
+    final category = AppScope.of(context).catalog.categories
         .where((item) => item.id == product.categoryId)
         .firstOrNull;
     final availabilityColor = product.isAvailable

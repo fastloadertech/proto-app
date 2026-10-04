@@ -603,6 +603,13 @@ class _DriverDetails extends StatelessWidget {
           'Demo contact · ${assignment.contactNumber}',
           style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
         ),
+        if (assignment.deliveryJobId != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Delivery ID · ${assignment.deliveryJobId}',
+            style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
+          ),
+        ],
         const SizedBox(height: 18),
         ProtoButton(
           label: 'Contact driver',

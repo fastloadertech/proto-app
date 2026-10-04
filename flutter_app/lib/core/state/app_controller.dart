@@ -3,6 +3,10 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 
 import '../../features/catalog/domain/product.dart';
+import '../../features/catalog/domain/catalog_repository.dart';
+import '../../features/catalog/data/local_catalog_repository.dart';
+import '../../features/auth/domain/auth_repository.dart';
+import '../../features/auth/data/local_auth_repository.dart';
 import '../../features/orders/data/local_order_repository.dart';
 import '../../features/orders/domain/order.dart';
 import '../../features/orders/domain/order_repository.dart';
@@ -11,8 +15,13 @@ import 'delivery_pricing.dart';
 
 /// Customer session state. All catalog, bag, and order data stays local.
 class AppController extends ChangeNotifier {
-  AppController({OrderRepository? orderRepository})
-    : _orderRepository = orderRepository ?? MockOrderRepository();
+  AppController({
+    OrderRepository? orderRepository,
+    CatalogRepository? catalogRepository,
+    AuthRepository? authRepository,
+  }) : _orderRepository = orderRepository ?? MockOrderRepository(),
+       catalog = catalogRepository ?? const LocalCatalogSource(),
+       auth = authRepository ?? LocalAuthRepository();
 
   static const DeliveryAddress _initialAddress = DeliveryAddress(
     line1: '42, First Main Road',
@@ -23,6 +32,19 @@ class AppController extends ChangeNotifier {
   );
 
   final OrderRepository _orderRepository;
+  final CatalogRepository catalog;
+  final AuthRepository auth;
+  CustomerSession? get currentSession => auth.currentSession;
+  Future<void> signInDemo(String phone) async {
+    await auth.login(phone);
+    notifyListeners();
+  }
+
+  Future<void> signOutDemo() async {
+    await auth.logout();
+    notifyListeners();
+  }
+
   final Map<(String, String?), BagLine> _bag = {};
   final Set<String> _savedIds = {};
   final List<DeliveryAddress> _savedAddresses = [_initialAddress];
@@ -246,28 +268,9 @@ class AppController extends ChangeNotifier {
     required PaymentMethod paymentMethod,
   }) {
     final discount = couponDiscount;
-    final normalizedAddress = address.normalized;
-    final needsNewAddressId =
-        normalizedAddress.id.isEmpty &&
-        normalizedAddress.label != _deliveryAddress.label;
-    final addressForOrder = normalizedAddress.id.isNotEmpty
-        ? normalizedAddress
-        : normalizedAddress.withId(
-            needsNewAddressId
-                ? 'address-$_nextAddressNumber'
-                : _deliveryAddress.id,
-          );
+    final addressForOrder = _addressForOrder(address);
     final order = _orderRepository.create(
-      items: bagLines
-          .map(
-            (line) => OrderItem(
-              product: line.product,
-              flavor: line.flavor,
-              quantity: line.quantity,
-              unitPrice: line.product.price,
-            ),
-          )
-          .toList(),
+      items: _orderItems(),
       address: addressForOrder,
       contact: contact,
       paymentMethod: paymentMethod,
@@ -275,6 +278,67 @@ class AppController extends ChangeNotifier {
       discount: discount,
       promoCode: discount > 0 ? _couponCode : null,
     );
+    _completeOrder(order, paymentMethod);
+    return order;
+  }
+
+  /// Checkout awaits this boundary so an eventual HTTP order repository can
+  /// fail without clearing the bag or changing the selected address.
+  Future<ProtoOrder> submitOrder({
+    required DeliveryAddress address,
+    required CheckoutContact contact,
+    required PaymentMethod paymentMethod,
+  }) async {
+    final discount = couponDiscount;
+    final items = _orderItems();
+    final destination = _addressForOrder(address);
+    final promoCode = discount > 0 ? _couponCode : null;
+    final repository = _orderRepository;
+    final order = repository is AsyncOrderRepository
+        ? await (repository as AsyncOrderRepository).createAsync(
+            items: items,
+            address: destination,
+            contact: contact,
+            paymentMethod: paymentMethod,
+            deliveryFee: deliveryFee,
+            discount: discount,
+            promoCode: promoCode,
+          )
+        : repository.create(
+            items: items,
+            address: destination,
+            contact: contact,
+            paymentMethod: paymentMethod,
+            deliveryFee: deliveryFee,
+            discount: discount,
+            promoCode: promoCode,
+          );
+    _completeOrder(order, paymentMethod);
+    return order;
+  }
+
+  List<OrderItem> _orderItems() => bagLines
+      .map(
+        (line) => OrderItem(
+          product: line.product,
+          flavor: line.flavor,
+          quantity: line.quantity,
+          unitPrice: line.product.price,
+        ),
+      )
+      .toList();
+
+  DeliveryAddress _addressForOrder(DeliveryAddress address) {
+    final normalized = address.normalized;
+    if (normalized.id.isNotEmpty) return normalized;
+    final needsNewId = normalized.label != _deliveryAddress.label;
+    return normalized.withId(
+      needsNewId ? 'address-$_nextAddressNumber' : _deliveryAddress.id,
+    );
+  }
+
+  void _completeOrder(ProtoOrder order, PaymentMethod paymentMethod) {
+    final needsNewAddressId = order.address.id == 'address-$_nextAddressNumber';
     if (needsNewAddressId) _nextAddressNumber++;
     final savedAddress = order.address;
     final savedIndex = _savedAddresses.indexWhere(
@@ -293,7 +357,6 @@ class AppController extends ChangeNotifier {
     _couponCode = null;
     _couponMessage = null;
     notifyListeners();
-    return order;
   }
 
   ProtoOrder? advanceOrderStatus(String id) {

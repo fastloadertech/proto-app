@@ -82,6 +82,7 @@ class DeliveryAssignment {
     required this.vehicleDetails,
     required this.contactNumber,
     required this.estimatedArrivalAt,
+    this.deliveryJobId,
   });
 
   final String driverName;
@@ -89,6 +90,7 @@ class DeliveryAssignment {
   final String vehicleDetails;
   final String contactNumber;
   final DateTime estimatedArrivalAt;
+  final String? deliveryJobId;
 }
 
 /// A local delivery destination, kept separately from contact information.

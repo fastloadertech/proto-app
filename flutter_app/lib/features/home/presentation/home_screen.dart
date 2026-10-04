@@ -5,7 +5,6 @@ import '../../../core/widgets/product_artwork.dart';
 import '../../../core/widgets/product_card.dart';
 import '../../../core/widgets/proto_brand.dart';
 import '../../../core/widgets/section_heading.dart';
-import '../../catalog/data/local_catalog_repository.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/product_detail_screen.dart';
 import '../../catalog/presentation/product_listing_screen.dart';
@@ -301,14 +300,13 @@ class HomeScreen extends StatelessWidget {
                       height: 125,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
-                        itemCount: LocalCatalogRepository.categories.length,
+                        itemCount: app.catalog.categories.length,
                         separatorBuilder: (_, _) => const SizedBox(width: 13),
                         itemBuilder: (context, index) {
-                          final category =
-                              LocalCatalogRepository.categories[index];
-                          final product = LocalCatalogRepository.byCategory(
-                            category.id,
-                          ).first;
+                          final category = app.catalog.categories[index];
+                          final product = app.catalog
+                              .byCategory(category.id)
+                              .first;
                           return _CategoryShortcut(
                             category: category,
                             product: product,
@@ -331,9 +329,7 @@ class HomeScreen extends StatelessWidget {
             ),
             SliverPadding(
               padding: EdgeInsets.symmetric(horizontal: padding),
-              sliver: _ProductGrid(
-                products: LocalCatalogRepository.featuredProducts,
-              ),
+              sliver: _ProductGrid(products: app.catalog.featuredProducts),
             ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(padding, 30, padding, 0),
@@ -348,9 +344,7 @@ class HomeScreen extends StatelessWidget {
             ),
             SliverPadding(
               padding: EdgeInsets.symmetric(horizontal: padding),
-              sliver: _ProductGrid(
-                products: LocalCatalogRepository.popularProducts,
-              ),
+              sliver: _ProductGrid(products: app.catalog.popularProducts),
             ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(padding, 30, padding, 32),
@@ -572,7 +566,7 @@ class _FuelHero extends StatelessWidget {
                         ? 212
                         : 275,
                     child: ProductArtwork(
-                      product: LocalCatalogRepository.products.first,
+                      product: AppScope.of(context).catalog.products.first,
                       showGlow: false,
                     ),
                   ),
@@ -677,9 +671,9 @@ class _HydrationHero extends StatelessWidget {
                   width: 191,
                   height: 232,
                   child: ProductArtwork(
-                    product: LocalCatalogRepository.byCategory(
-                      'hydration',
-                    ).first,
+                    product: AppScope.of(
+                      context,
+                    ).catalog.byCategory('hydration').first,
                     showGlow: false,
                   ),
                 ),

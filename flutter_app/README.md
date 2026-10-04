@@ -1,6 +1,30 @@
 # Proto
 
-A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 6 builds on the existing shopping journey with immutable order snapshots, a validated delivery lifecycle, and a replaceable order repository.
+A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 7 adds API-ready contracts around the existing local shopping journey. The backend is **not connected**.
+
+## Day 7 API-ready architecture
+
+The screens read the catalog through `AppController.catalog` (`CatalogRepository`) instead of static local data. `LocalCatalogSource` adapts the existing `LocalCatalogRepository`, retaining its static API and all mock products. Order screens still use `AppController` and `OrderRepository`; checkout now awaits `AsyncOrderRepository.createAsync` when available. `LocalOrderRepository` implements both. Existing synchronous repository implementations remain compatible. A later `ApiCatalogRepository` and `ApiOrderRepository` can be injected into `AppController` without editing discovery or checkout widgets. Catalog reads are currently synchronous; a future API adapter will need a cache/loading owner for remote catalog refreshes.
+
+`AuthRepository` provides login, logout, and the current customer session. `LocalAuthRepository` handles explicit demo sign-in in memory and issues **no token**. A future `ApiAuthRepository` can return a real session; `CustomerSession.authorizationHeaders` supplies a Bearer header only for a valid token. Guest browsing remains available. Saved addresses and selected payment method remain in `AppController` memory; the checkout and order DTOs define their future wire shape. No credentials or secrets are included.
+
+`lib/core/api/api_models.dart` contains JSON DTOs for customer, auth session, category, product, address, order item, payment, driver assignment, order, and create-order request. These are wire data only; Flutter artwork and colors stay in the UI/domain. `fromJson` and `toJson` round-trip using Dart's built-in JSON-compatible maps. Monetary wire values are **integer INR paise**; the current local UI continues using rupee amounts until an API adapter performs explicit conversion. Timestamps use ISO 8601 UTC. Order status values planned for the API are `pending`, `confirmed`, `preparing`, `out_for_delivery`, `delivered`, and `cancelled`; payment status values include `not_charged`, `pending`, `paid`, `failed`, and `refunded`. No network call or fake server was added.
+
+Day 7 validation: `flutter analyze` reports no issues; all **86** tests pass; `flutter build web --no-web-resources-cdn` succeeds. Chrome was walked through Home → search → product → bag → checkout → saved address → UPI demo → confirmation → orders → reopened details, including status progression and the mock driver. Home was visually reviewed at desktop and 390 × 844 mobile size. The browser walkthrough used local data only; Android/iOS device builds and live backend integration remain future work.
+
+The proposed authenticated order routes are:
+
+| Action | Route | Request | Response |
+| --- | --- | --- | --- |
+| Create | `POST /v1/customer/orders` | `CreateOrderRequestDto`: `addressId`, `paymentMethod`, `items` (`productId`, `quantity`, optional `flavor`), optional `promoCode` | `OrderDto` |
+| List | `GET /v1/customer/orders` | None | Array of `OrderDto` |
+| Detail | `GET /v1/customer/orders/{id}` | None | `OrderDto` |
+| Cancel | `POST /v1/customer/orders/{id}/cancel` | None | Updated `OrderDto` |
+| Status | `GET /v1/customer/orders/{id}/status` | None | `{orderId, status, estimatedDeliveryAt, driver}` |
+
+The server must recalculate availability, prices, promotions, fees, and totals. The create request deliberately omits client-calculated totals. The order response preserves item names, quantities, unit prices, address, payment state, amounts, and timestamps as a snapshot. Driver assignment can carry `deliveryJobId`, name, vehicle, contact, and ETA; the local status progression still supplies a mock driver and job ID. The intended flow is **Proto customer app → NestJS backend → Loader** for dispatch, with delivery status flowing back through the backend to Proto. Proto does not contact Loader directly. Neither backend nor Loader is changed or connected in Day 7.
+
+The auth contract envisions login (`POST /v1/customer/auth/login`), logout (`POST /v1/customer/auth/logout`), and current session (`GET /v1/customer/auth/me`); the exact OTP/token protocol remains to be agreed with the backend. `ApiFailure` maps network, authentication, not-found, validation, server, and unknown failures to stable categories and messages. `ApiConfig.baseUrl` is a development placeholder (`http://localhost:3000`) overridable with `--dart-define=PROTO_API_BASE_URL=...`; it is not used by the local app and no production URL is hardcoded in screens.
 
 ## Run
 

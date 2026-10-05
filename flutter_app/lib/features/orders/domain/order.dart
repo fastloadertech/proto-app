@@ -3,11 +3,13 @@ import '../../catalog/domain/product.dart';
 enum PaymentMethod {
   cashOnDelivery,
   mockUpi,
+  online,
   mockCard;
 
   String get label => switch (this) {
     cashOnDelivery => 'Pay on delivery',
     mockUpi => 'UPI demo',
+    online => 'Online payment',
     mockCard => 'Card demo',
   };
 }

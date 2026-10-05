@@ -1,10 +1,10 @@
-/// Proposed Proto customer endpoints. These are route definitions only.
-/// No HTTP client or backend implementation is included in Day 7.
+import 'api_routes.dart';
+
+/// Backward-compatible names for proposed shared-backend order routes.
 class OrderApiContract {
   const OrderApiContract._();
-  static const ordersPath = '/v1/customer/orders';
-  static String orderPath(String id) =>
-      '$ordersPath/${Uri.encodeComponent(id)}';
-  static String cancelPath(String id) => '${orderPath(id)}/cancel';
-  static String statusPath(String id) => '${orderPath(id)}/status';
+  static const ordersPath = ApiRoutes.orders;
+  static String orderPath(String id) => ApiRoutes.order(id);
+  static String cancelPath(String id) => ApiRoutes.cancelOrder(id);
+  static String statusPath(String id) => ApiRoutes.orderStatus(id);
 }

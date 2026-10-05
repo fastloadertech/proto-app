@@ -383,7 +383,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           subtitle: 'All payment choices are part of the local demo.',
           child: Column(
             children: [
-              for (final method in PaymentMethod.values) ...[
+              for (final method in PaymentMethod.values.where(
+                (method) => method != PaymentMethod.online,
+              )) ...[
                 _PaymentChoice(
                   method: method,
                   selected: _paymentMethod == method,
@@ -752,6 +754,7 @@ class _PaymentChoice extends StatelessWidget {
                 switch (method) {
                   PaymentMethod.cashOnDelivery => Icons.payments_outlined,
                   PaymentMethod.mockUpi => Icons.qr_code_rounded,
+                  PaymentMethod.online => Icons.account_balance_wallet_outlined,
                   PaymentMethod.mockCard => Icons.credit_card_rounded,
                 },
                 color: selected ? ProtoColors.lime : ProtoColors.muted,

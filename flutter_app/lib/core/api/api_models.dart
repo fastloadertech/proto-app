@@ -56,11 +56,30 @@ class AuthSessionDto {
 }
 
 class CategoryDto {
-  const CategoryDto({required this.id, required this.name});
+  const CategoryDto({
+    required this.id,
+    required this.name,
+    this.slug,
+    this.description,
+    this.isActive,
+  });
   final String id, name;
-  factory CategoryDto.fromJson(JsonMap json) =>
-      CategoryDto(id: _string(json, 'id'), name: _string(json, 'name'));
-  JsonMap toJson() => {'id': id, 'name': name};
+  final String? slug, description;
+  final bool? isActive;
+  factory CategoryDto.fromJson(JsonMap json) => CategoryDto(
+    id: _string(json, 'id'),
+    name: _string(json, 'name'),
+    slug: json['slug'] as String?,
+    description: json['description'] as String?,
+    isActive: json['isActive'] as bool?,
+  );
+  JsonMap toJson() => {
+    'id': id,
+    'name': name,
+    if (slug != null) 'slug': slug,
+    if (description != null) 'description': description,
+    if (isActive != null) 'isActive': isActive,
+  };
 }
 
 class ProductDto {
@@ -74,11 +93,15 @@ class ProductDto {
     this.imageUrl,
     this.type,
     this.flavors = const [],
+    this.sku,
+    this.currency = 'INR',
   });
   final String id, categoryId, name, description;
   final int pricePaise;
   final bool available;
   final String? imageUrl, type;
+  final String? sku;
+  final String currency;
   final List<String> flavors;
   factory ProductDto.fromJson(JsonMap json) => ProductDto(
     id: _string(json, 'id'),
@@ -90,6 +113,8 @@ class ProductDto {
     imageUrl: json['imageUrl'] as String?,
     type: json['type'] as String?,
     flavors: List<String>.from(json['flavors'] as List? ?? const []),
+    sku: json['sku'] as String?,
+    currency: json['currency'] as String? ?? 'INR',
   );
   JsonMap toJson() => {
     'id': id,
@@ -101,6 +126,8 @@ class ProductDto {
     if (imageUrl != null) 'imageUrl': imageUrl,
     if (type != null) 'type': type,
     'flavors': flavors,
+    if (sku != null) 'sku': sku,
+    'currency': currency,
   };
 }
 
@@ -112,8 +139,15 @@ class AddressDto {
     required this.area,
     required this.city,
     required this.postalCode,
+    this.line2,
+    this.recipientName,
+    this.phone,
+    this.userId,
+    this.isDefault,
   });
   final String id, label, line1, area, city, postalCode;
+  final String? line2, recipientName, phone, userId;
+  final bool? isDefault;
   factory AddressDto.fromJson(JsonMap json) => AddressDto(
     id: _string(json, 'id'),
     label: _string(json, 'label'),
@@ -121,6 +155,11 @@ class AddressDto {
     area: _string(json, 'area'),
     city: _string(json, 'city'),
     postalCode: _string(json, 'postalCode'),
+    line2: json['line2'] as String?,
+    recipientName: json['recipientName'] as String?,
+    phone: json['phone'] as String?,
+    userId: json['userId'] as String?,
+    isDefault: json['isDefault'] as bool?,
   );
   JsonMap toJson() => {
     'id': id,
@@ -129,6 +168,11 @@ class AddressDto {
     'area': area,
     'city': city,
     'postalCode': postalCode,
+    if (line2 != null) 'line2': line2,
+    if (recipientName != null) 'recipientName': recipientName,
+    if (phone != null) 'phone': phone,
+    if (userId != null) 'userId': userId,
+    if (isDefault != null) 'isDefault': isDefault,
   };
 }
 
@@ -139,16 +183,22 @@ class OrderItemDto {
     required this.quantity,
     required this.unitPricePaise,
     this.flavor,
+    this.id,
+    this.lineTotalPaise,
   });
   final String productId, name;
   final int quantity, unitPricePaise;
   final String? flavor;
+  final String? id;
+  final int? lineTotalPaise;
   factory OrderItemDto.fromJson(JsonMap json) => OrderItemDto(
     productId: _string(json, 'productId'),
     name: _string(json, 'name'),
     quantity: _int(json, 'quantity'),
     unitPricePaise: _int(json, 'unitPricePaise'),
     flavor: json['flavor'] as String?,
+    id: json['id'] as String?,
+    lineTotalPaise: json['lineTotalPaise'] as int?,
   );
   JsonMap toJson() => {
     'productId': productId,
@@ -156,6 +206,8 @@ class OrderItemDto {
     'quantity': quantity,
     'unitPricePaise': unitPricePaise,
     if (flavor != null) 'flavor': flavor,
+    if (id != null) 'id': id,
+    if (lineTotalPaise != null) 'lineTotalPaise': lineTotalPaise,
   };
 }
 
@@ -164,20 +216,38 @@ class PaymentDto {
     required this.method,
     required this.status,
     this.reference,
+    this.id,
+    this.amountPaise,
+    this.currency = 'INR',
+    this.paidAt,
   });
 
   /// Examples: cash_on_delivery, upi, card; not_charged, pending, paid.
   final String method, status;
   final String? reference;
+  final String? id;
+  final int? amountPaise;
+  final String currency;
+  final DateTime? paidAt;
   factory PaymentDto.fromJson(JsonMap json) => PaymentDto(
     method: _string(json, 'method'),
     status: _string(json, 'status'),
     reference: json['reference'] as String?,
+    id: json['id'] as String?,
+    amountPaise: json['amountPaise'] as int?,
+    currency: json['currency'] as String? ?? 'INR',
+    paidAt: json['paidAt'] == null
+        ? null
+        : DateTime.parse(_string(json, 'paidAt')),
   );
   JsonMap toJson() => {
     'method': method,
     'status': status,
     if (reference != null) 'reference': reference,
+    if (id != null) 'id': id,
+    if (amountPaise != null) 'amountPaise': amountPaise,
+    'currency': currency,
+    if (paidAt != null) 'paidAt': paidAt!.toUtc().toIso8601String(),
   };
 }
 
@@ -208,36 +278,78 @@ class DriverAssignmentDto {
   };
 }
 
+/// Customer-facing snapshot of the shared backend's DeliveryJob. The legacy
+/// Loader Delivery record is a different entity and never appears here.
+class DeliveryJobDto {
+  const DeliveryJobDto({
+    required this.id,
+    required this.orderId,
+    required this.status,
+    this.estimatedMinutes,
+    this.assignment,
+  });
+  final String id, orderId, status;
+  final int? estimatedMinutes;
+  final DriverAssignmentDto? assignment;
+  factory DeliveryJobDto.fromJson(JsonMap json) => DeliveryJobDto(
+    id: _string(json, 'id'),
+    orderId: _string(json, 'orderId'),
+    status: _string(json, 'status'),
+    estimatedMinutes: json['estimatedMinutes'] as int?,
+    assignment: json['assignment'] == null
+        ? null
+        : DriverAssignmentDto.fromJson(_object(json, 'assignment')),
+  );
+  JsonMap toJson() => {
+    'id': id,
+    'orderId': orderId,
+    'status': status,
+    if (estimatedMinutes != null) 'estimatedMinutes': estimatedMinutes,
+    if (assignment != null) 'assignment': assignment!.toJson(),
+  };
+}
+
 class OrderDto {
   const OrderDto({
     required this.id,
     required this.createdAt,
     required this.status,
     required this.items,
-    required this.address,
-    required this.payment,
+    this.address,
+    this.payment,
     required this.subtotalPaise,
     required this.deliveryFeePaise,
     required this.discountPaise,
     required this.totalPaise,
     this.estimatedDeliveryAt,
     this.driver,
+    this.reference,
+    this.customerId,
+    this.customer,
+    this.delivery,
   });
   final String id, status;
+  final String? reference, customerId;
+  final CustomerDto? customer;
   final DateTime createdAt;
   final DateTime? estimatedDeliveryAt;
   final List<OrderItemDto> items;
-  final AddressDto address;
-  final PaymentDto payment;
+  final AddressDto? address;
+  final PaymentDto? payment;
   final int subtotalPaise, deliveryFeePaise, discountPaise, totalPaise;
   final DriverAssignmentDto? driver;
+  final DeliveryJobDto? delivery;
   factory OrderDto.fromJson(JsonMap json) => OrderDto(
     id: _string(json, 'id'),
     createdAt: DateTime.parse(_string(json, 'createdAt')),
     status: _string(json, 'status'),
     items: _objects(json, 'items').map(OrderItemDto.fromJson).toList(),
-    address: AddressDto.fromJson(_object(json, 'address')),
-    payment: PaymentDto.fromJson(_object(json, 'payment')),
+    address: json['address'] == null
+        ? null
+        : AddressDto.fromJson(_object(json, 'address')),
+    payment: json['payment'] == null
+        ? null
+        : PaymentDto.fromJson(_object(json, 'payment')),
     subtotalPaise: _int(json, 'subtotalPaise'),
     deliveryFeePaise: _int(json, 'deliveryFeePaise'),
     discountPaise: _int(json, 'discountPaise'),
@@ -248,14 +360,22 @@ class OrderDto {
     driver: json['driver'] == null
         ? null
         : DriverAssignmentDto.fromJson(_object(json, 'driver')),
+    reference: json['reference'] as String?,
+    customerId: json['customerId'] as String?,
+    customer: json['customer'] == null
+        ? null
+        : CustomerDto.fromJson(_object(json, 'customer')),
+    delivery: json['delivery'] == null
+        ? null
+        : DeliveryJobDto.fromJson(_object(json, 'delivery')),
   );
   JsonMap toJson() => {
     'id': id,
     'createdAt': createdAt.toUtc().toIso8601String(),
     'status': status,
     'items': items.map((item) => item.toJson()).toList(),
-    'address': address.toJson(),
-    'payment': payment.toJson(),
+    if (address != null) 'address': address!.toJson(),
+    if (payment != null) 'payment': payment!.toJson(),
     'subtotalPaise': subtotalPaise,
     'deliveryFeePaise': deliveryFeePaise,
     'discountPaise': discountPaise,
@@ -263,6 +383,10 @@ class OrderDto {
     if (estimatedDeliveryAt != null)
       'estimatedDeliveryAt': estimatedDeliveryAt!.toUtc().toIso8601String(),
     if (driver != null) 'driver': driver!.toJson(),
+    if (reference != null) 'reference': reference,
+    if (customerId != null) 'customerId': customerId,
+    if (customer != null) 'customer': customer!.toJson(),
+    if (delivery != null) 'delivery': delivery!.toJson(),
   };
 }
 

@@ -9,7 +9,8 @@ import '../features/home/presentation/home_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  const MainShell({super.key, this.liveAuth = false});
+  final bool liveAuth;
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -44,7 +45,10 @@ class _MainShellState extends State<MainShell> {
                   onSignIn: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (context) => LoginScreen(
+                        liveAuth: widget.liveAuth,
                         onDemoSignIn: AppScope.of(context).signInDemo,
+                        onApiSignIn: (phone, code) =>
+                            AppScope.of(context).signIn(phone, code: code),
                         onContinue: () => Navigator.pop(context),
                       ),
                     ),

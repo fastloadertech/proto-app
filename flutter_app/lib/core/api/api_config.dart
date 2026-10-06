@@ -13,6 +13,12 @@ class ApiConfig {
     'PROTO_API_BASE_URL',
     defaultValue: 'http://localhost:3101',
   );
+
+  /// Opt in at launch with --dart-define=PROTO_LIVE_AUTH=true.
+  static const liveCustomerAuth = bool.fromEnvironment(
+    'PROTO_LIVE_AUTH',
+    defaultValue: false,
+  );
   static const defaultProductionBaseUrl = String.fromEnvironment(
     'PROTO_PRODUCTION_API_BASE_URL',
     defaultValue: '',

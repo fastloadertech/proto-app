@@ -2,9 +2,8 @@
 /// The Day 8 backend has module boundaries, not commerce controllers yet.
 class ApiRoutes {
   const ApiRoutes._();
-  static const authLogin = '/api/v1/customer/auth/login';
-  static const authLogout = '/api/v1/customer/auth/logout';
-  static const authMe = '/api/v1/customer/auth/me';
+  static const authLogin = '/api/v1/auth/customer/login';
+  static const authMe = '/api/v1/auth/me';
   static const categories = '/api/v1/catalog/categories';
   static const products = '/api/v1/catalog/products';
   static const orders = '/api/v1/customer/orders';

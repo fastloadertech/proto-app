@@ -1,12 +1,30 @@
 # Proto
 
-A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 8 prepares opt-in client adapters for the shared backend. The running app still uses local data; the backend is **not connected**.
+A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 9 can connect **customer authentication only** to the shared NestJS backend. Catalog, bag, addresses, orders, checkout, payments, and delivery still use local demo state.
+
+## Day 9 customer authentication
+
+`LoginScreen → AppController → AuthRepository → ApiAuthRepository → ApiClient → HttpApiTransport → shared NestJS backend`. Live auth is an explicit development opt-in; the default remains `LocalAuthRepository` so the Day 1–8 demo and guest path work offline. Only auth receives an HTTP transport. `ApiCatalogRepository` and `ApiOrderRepository` remain unwired.
+
+Start the shared backend separately following `D:\loader-app\backend\README.md`, including its migration and development seed instructions. The seed customer phone defaults to `+15550001001` unless `DEV_CUSTOMER_PHONE` was overridden. Enter the **six-digit code from the backend's ignored local `.env`** in Proto's sign-in sheet. The code is typed at runtime, is not included in Flutter source or `dart-define`, and is never stored by Proto. No SMS is sent. Do not commit the backend `.env` or a real code.
+
+For local Chrome development:
+
+```powershell
+flutter run -d chrome --dart-define=PROTO_LIVE_AUTH=true --dart-define=PROTO_API_BASE_URL=http://localhost:3101
+```
+
+`PROTO_LIVE_AUTH=false` (the default) selects the local fallback. Use `http://10.0.2.2:3101` for an Android emulator if the backend listens on the host; a physical device needs a reachable LAN address and matching backend/CORS/network configuration. `ApiConfig` also keeps an unset production URL placeholder; the backend's development-code login deliberately rejects production use. Neither a production auth provider nor production token storage is implemented.
+
+Live login posts `{phone, code}` to `POST /api/v1/auth/customer/login` and reads `{accessToken, role, user}`. The session holds customer ID, name, international phone, role, active state, and JWT centrally in a replaceable **memory-only** `AuthSessionStore`. `GET /api/v1/auth/me` sends `Authorization: Bearer <accessToken>` to validate an existing in-memory session and refresh the safe profile. Startup attempts restore; a browser refresh or app restart drops the token because no secure persistent store exists. Logout clears the session locally and returns to login; the backend has no logout endpoint. The login UI shows safe messages for invalid code, disabled or missing account, validation, conflict, server, network, and timeout failures, without displaying raw backend details. Guest browsing remains available.
+
+Day 9 validation: `flutter analyze` found no issues, all **107** Flutter tests passed, and `flutter build web --no-web-resources-cdn` succeeded. Chrome verified the seeded backend login, invalid-code feedback, Home, authenticated Profile, and Logout back to Login. Desktop and 390 × 844 mobile screenshots showed no visible clipping. Live auth is development-only; there is no verified phone ownership, SMS, refresh token, secure persistent storage, real payment, GPS, notification, or live delivery.
 
 ## Day 8 shared-backend preparation
 
 The future data flow is **Proto customer app → shared NestJS backend → PostgreSQL / Prisma → Loader driver app**. Proto will call the backend; it will not call Loader directly. The backend at `D:\loader-app\backend` currently defines `/api/v1`, shared Prisma models, and module ownership for auth, catalog, orders, payments, and deliveries. Its commerce controllers are not implemented yet. Day 8 changes only this Proto Flutter project; it does not create a second backend or change Loader.
 
-`AppController` still defaults to `LocalAuthRepository`, `LocalCatalogSource` (over the existing `LocalCatalogRepository`), and `MockOrderRepository`. Screens depend on `AuthRepository`, `CatalogRepository`, and `OrderRepository` through the controller. The new `ApiAuthRepository`, `ApiCatalogRepository`, and `ApiOrderRepository` are **opt-in** and require an injected `ApiClient`/`ApiTransport`. No concrete HTTP transport is registered, so app launch, guest browsing, checkout, and order tracking make no backend requests. A later rollout must add the platform HTTP transport, agree endpoint payloads, load the catalog cache, and explicitly inject API repositories.
+`AppController` defaults to `LocalAuthRepository`, `LocalCatalogSource` (over the existing `LocalCatalogRepository`), and `MockOrderRepository`. Day 9 adds the concrete cross-platform HTTP transport and opt-in auth wiring described above. Catalog, checkout, and order tracking still make no backend requests.
 
 `ApiConfig` centralizes development (`PROTO_API_BASE_URL`, default `http://localhost:3101`) and optional production (`PROTO_PRODUCTION_API_BASE_URL`, unset) origins. `ApiRoutes` contains **proposed** customer and catalog paths under `/api/v1`; only the prefix is established in the backend today. The client rejects non-versioned paths and an unconfigured production URL. `ApiClient` adds JSON and optional Bearer headers, maps the shared NestJS `{statusCode, error, message}` envelope, and classifies network, 400 validation, 401 authentication, 403 forbidden, 404 not found, 409 conflict, 500 server, and unknown failures. No secrets are stored in the app.
 
@@ -38,7 +56,7 @@ The proposed authenticated order routes are:
 
 The server must recalculate availability, prices, promotions, fees, and totals. The create request deliberately omits client-calculated totals. The order response preserves item names, quantities, unit prices, address, payment state, amounts, and timestamps as a snapshot. Driver assignment can carry `deliveryJobId`, name, vehicle, contact, and ETA; the local status progression still supplies a mock driver and job ID. The intended flow is **Proto customer app → NestJS backend → Loader** for dispatch, with delivery status flowing back through the backend to Proto. Proto does not contact Loader directly. Neither backend nor Loader is changed or connected in Day 7.
 
-The proposed auth routes are login (`POST /api/v1/customer/auth/login`), logout (`POST /api/v1/customer/auth/logout`), and current session (`GET /api/v1/customer/auth/me`); the exact OTP/token protocol remains to be agreed with the backend. Day 8's configuration and error mapping are documented above. No production URL is hardcoded in screens.
+The Day 7 proposed auth routes were superseded by the Day 9 backend's `POST /api/v1/auth/customer/login` and `GET /api/v1/auth/me`. There is no backend logout route. No production URL is hardcoded in screens.
 
 ## Run
 
@@ -72,7 +90,7 @@ Checkout validates contact details and a delivery address. You can view and edit
 
 Confirmation shows the order ID, captured items, destination, fee, discount, final amount, status, and sample ETA. Open the order details and status screen with `Track order`, or continue shopping. Open `Your orders` from You to see the current session's orders, newest first, with date, amount, and status. Reopened details include the order's placement date and time.
 
-Login checks a local ten-digit phone number and explicitly labels demo sign-in. It sends no OTP and does not create an authenticated account. Bag contents, favourites, delivery and contact details, payment choices, and order history are all kept only in memory for the current app session. Restarting or refreshing the app resets them.
+In the default local mode, login checks a ten-digit phone number and labels demo sign-in. In live-auth mode, it accepts an international phone number and the backend development code. Bag contents, favourites, delivery and contact details, payment choices, and order history are all kept only in memory for the current app session. Restarting or refreshing the app resets them.
 
 The You tab shows the current demo contact, orders, saved addresses, and saved products. Settings previews local order-update and product-offer preferences. About Proto describes the demo; the mock Log out action returns to sign-in while retaining the current session's shopping data in memory.
 
@@ -120,7 +138,7 @@ test/                      Session-state and customer-journey tests
 
 Screens share a single `AppController` through the SDK's `ChangeNotifier` and `InheritedNotifier` scope. `DeliveryPricing`, `CouponPricing`, `formatPrice`, and `PriceSummary` keep bag, checkout, and order totals consistent. Local repositories supply catalog data and capture order snapshots; the order repository contract provides a boundary for a future data source.
 
-The only packages are Flutter and the SDK's `flutter_test`. Flutter supplies navigation, state notifications, animation, forms, and painting. There are no third-party packages, backend services, payment integrations, or Loader integration.
+Flutter supplies navigation, state notifications, animation, forms, and painting. The single `http` package supplies cross-platform transport for Day 9 authentication. There is no catalog, order, payment, delivery, or Loader network integration.
 
 The existing Expo app in the parent directory is preserved independently. Inter is bundled under the SIL Open Font License in `assets/fonts/OFL.txt`.
 

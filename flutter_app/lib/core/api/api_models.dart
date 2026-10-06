@@ -16,20 +16,48 @@ class CustomerDto {
     required this.name,
     required this.phone,
     this.email,
+    this.role,
+    this.isActive,
   });
   final String id, name, phone;
-  final String? email;
+  final String? email, role;
+  final bool? isActive;
   factory CustomerDto.fromJson(JsonMap json) => CustomerDto(
     id: _string(json, 'id'),
     name: _string(json, 'name'),
     phone: _string(json, 'phone'),
     email: json['email'] as String?,
+    role: json['role'] as String?,
+    isActive: json['isActive'] as bool?,
   );
   JsonMap toJson() => {
     'id': id,
     'name': name,
     'phone': phone,
     if (email != null) 'email': email,
+    if (role != null) 'role': role,
+    if (isActive != null) 'isActive': isActive,
+  };
+}
+
+/// Day 9 shared-backend login envelope. /auth/me returns CustomerDto alone.
+class CustomerLoginDto {
+  const CustomerLoginDto({
+    required this.accessToken,
+    required this.role,
+    required this.user,
+  });
+  final String accessToken, role;
+  final CustomerDto user;
+  factory CustomerLoginDto.fromJson(JsonMap json) => CustomerLoginDto(
+    accessToken: _string(json, 'accessToken'),
+    role: _string(json, 'role'),
+    user: CustomerDto.fromJson(_object(json, 'user')),
+  );
+  JsonMap toJson() => {
+    'accessToken': accessToken,
+    'role': role,
+    'user': user.toJson(),
   };
 }
 

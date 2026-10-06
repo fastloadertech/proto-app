@@ -87,7 +87,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     builder: (dialogContext) => AlertDialog(
       backgroundColor: ProtoColors.surface,
       scrollable: true,
-      title: const Text('Leave the demo?'),
+      title: Text(
+        AppScope.of(context).currentSession?.isAuthenticated == true
+            ? 'Log out of Proto?'
+            : 'Leave the demo?',
+      ),
       content: const Text(
         'You will return to sign-in. Your bag, saved addresses, and orders '
         'stay in local memory for this demo session.',
@@ -99,8 +103,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: const Text('Stay here'),
         ),
         TextButton(
-          onPressed: () {
-            AppScope.of(context).signOutDemo();
+          onPressed: () async {
+            await AppScope.of(context).signOut();
+            if (!dialogContext.mounted) return;
             Navigator.of(dialogContext).pop();
             (widget.onLogout ?? widget.onSignIn)();
           },
@@ -169,7 +174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  app.contact.name,
+                                  app.currentSession?.name ?? app.contact.name,
                                   style: const TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,
@@ -177,7 +182,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '+91 ${app.contact.phone} · Demo customer',
+                                  app.currentSession?.isAuthenticated == true
+                                      ? '${app.currentSession!.phone} · Proto customer'
+                                      : '+91 ${app.contact.phone} · Demo customer',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: ProtoColors.muted,
@@ -190,8 +197,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 19),
                       ProtoButton(
-                        label: 'Try demo sign-in',
-                        onPressed: widget.onSignIn,
+                        label: app.currentSession?.isAuthenticated == true
+                            ? 'Account active'
+                            : 'Try demo sign-in',
+                        onPressed: app.currentSession?.isAuthenticated == true
+                            ? null
+                            : widget.onSignIn,
                         outlined: true,
                       ),
                     ],
@@ -433,7 +444,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 _ProfileLink(
                   title: 'Log out',
-                  subtitle: 'Return to demo sign-in',
+                  subtitle: app.currentSession?.isAuthenticated == true
+                      ? 'Clear this customer session'
+                      : 'Return to demo sign-in',
                   icon: Icons.logout_rounded,
                   onTap: _confirmLogout,
                 ),

@@ -6,7 +6,7 @@ class LocalAuthRepository implements AuthRepository {
   @override
   CustomerSession? get currentSession => _session;
   @override
-  Future<CustomerSession> login(String phone) async {
+  Future<CustomerSession> login(String phone, {String? code}) async {
     if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
       throw ArgumentError.value(
         phone,
@@ -19,6 +19,9 @@ class LocalAuthRepository implements AuthRepository {
       phone: phone,
     );
   }
+
+  @override
+  Future<CustomerSession?> restoreSession() async => _session;
 
   @override
   Future<void> logout() async {

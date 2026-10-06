@@ -35,15 +35,25 @@ class AppController extends ChangeNotifier {
   final CatalogRepository catalog;
   final AuthRepository auth;
   CustomerSession? get currentSession => auth.currentSession;
-  Future<void> signInDemo(String phone) async {
-    await auth.login(phone);
+  Future<void> signIn(String phone, {String? code}) async {
+    await auth.login(phone, code: code);
     notifyListeners();
   }
 
-  Future<void> signOutDemo() async {
+  Future<void> signInDemo(String phone) => signIn(phone);
+
+  Future<CustomerSession?> restoreSession() async {
+    final session = await auth.restoreSession();
+    notifyListeners();
+    return session;
+  }
+
+  Future<void> signOut() async {
     await auth.logout();
     notifyListeners();
   }
+
+  Future<void> signOutDemo() => signOut();
 
   final Map<(String, String?), BagLine> _bag = {};
   final Set<String> _savedIds = {};

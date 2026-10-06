@@ -125,19 +125,23 @@ void main() {
   });
 
   test('API auth adapter is opt-in and keeps a replaceable session', () async {
-    final session = AuthSessionDto(
-      customer: CustomerDto.fromJson(_customer),
+    const session = CustomerLoginDto(
+      user: CustomerDto(
+        id: 'c1',
+        name: 'Alex Rao',
+        phone: '+15550001001',
+        role: 'CUSTOMER',
+        isActive: true,
+      ),
       accessToken: 'test-token',
-      expiresAt: DateTime.utc(2035),
+      role: 'CUSTOMER',
     );
     final transport = _RecordingTransport(
-      (request) async => request.uri.path == ApiRoutes.authLogout
-          ? const ApiResponse(204, null)
-          : ApiResponse(200, session.toJson()),
+      (request) async => ApiResponse(200, session.toJson()),
     );
     AuthRepository auth = ApiAuthRepository(ApiClient(transport: transport));
     expect(auth.currentSession, isNull);
-    final signedIn = await auth.login('9876543210');
+    final signedIn = await auth.login('+15550001001', code: '123456');
     expect(signedIn.authorizationHeaders['Authorization'], 'Bearer test-token');
     expect(transport.requests.first.uri.path, ApiRoutes.authLogin);
     await auth.logout();
@@ -320,7 +324,11 @@ class _FixedAuth implements AuthRepository {
     expiresAt: DateTime.utc(2035),
   );
   @override
-  Future<CustomerSession> login(String phone) async => currentSession!;
+  Future<CustomerSession> login(String phone, {String? code}) async =>
+      currentSession!;
+
+  @override
+  Future<CustomerSession?> restoreSession() async => currentSession;
   @override
   Future<void> logout() async {}
 }

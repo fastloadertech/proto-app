@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "PROTO",
+    "slug": "proto",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAFBF8",
+    "splash": {
+      "backgroundColor": "#FAFBF8"
+    },
+    "android": {
+      "package": "com.fastloader.proto",
+      "predictiveBackGestureEnabled": false
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fastloader.proto"
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "PROTO — Protein Delivered",
+      "shortName": "PROTO",
+      "themeColor": "#F46A25",
+      "backgroundColor": "#FAFBF8"
+    }
+  }
+}

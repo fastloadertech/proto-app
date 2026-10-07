@@ -47,21 +47,3 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 .artifacts/
-
-# JavaScript / Expo
-node_modules/
-.expo/
-.expo-home/
-dist/
-web-build/
-*.tsbuildinfo
-
-# Local tools and caches
-.npm-cache/
-.temp/
-.tools/
-
-# Environment files
-.env
-.env.*
-!.env.example

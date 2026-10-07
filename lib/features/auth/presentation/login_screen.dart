@@ -6,12 +6,22 @@ import 'package:flutter/services.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/proto_brand.dart';
 import '../../../core/widgets/proto_button.dart';
+import '../domain/auth_repository.dart';
 
-/// Local, explicit demo sign-in; no authentication service is connected.
+/// Local demo or development customer sign-in; the controller owns auth work.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onContinue});
+  const LoginScreen({
+    super.key,
+    required this.onContinue,
+    this.onDemoSignIn,
+    this.onApiSignIn,
+    this.liveAuth = false,
+  });
 
   final VoidCallback onContinue;
+  final Future<void> Function(String phone)? onDemoSignIn;
+  final Future<void> Function(String phone, String code)? onApiSignIn;
+  final bool liveAuth;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -19,12 +29,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
+  final _codeController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   final _phoneFocus = FocusNode();
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _codeController.dispose();
     _phoneFocus.dispose();
     super.dispose();
   }
@@ -32,6 +44,10 @@ class _LoginScreenState extends State<LoginScreen> {
   void _continue() {
     if (!_formKey.currentState!.validate()) return;
     _phoneFocus.unfocus();
+    if (widget.liveAuth) {
+      _showLiveSignIn();
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: ProtoColors.surface,
@@ -98,13 +114,123 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: ProtoButton(
                   label: 'Enter Proto',
                   icon: Icons.arrow_forward_rounded,
-                  onPressed: () {
+                  onPressed: () async {
+                    if (widget.onDemoSignIn != null) {
+                      await widget.onDemoSignIn!(_phoneController.text);
+                    }
+                    if (!sheetContext.mounted) return;
                     Navigator.of(sheetContext).pop();
                     widget.onContinue();
                   },
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showLiveSignIn() {
+    String? error;
+    var busy = false;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: ProtoColors.surface,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, update) => SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              4,
+              24,
+              28 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Customer sign-in',
+                  style: TextStyle(
+                    fontSize: 25,
+                    fontWeight: FontWeight.w800,
+                    color: ProtoColors.text,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _phoneController.text,
+                  style: const TextStyle(color: ProtoColors.text),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Enter the six-digit code configured in the local shared backend. '
+                  'No SMS is sent in development.',
+                  style: TextStyle(color: ProtoColors.muted, height: 1.5),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _codeController,
+                  keyboardType: TextInputType.number,
+                  obscureText: true,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Development code',
+                    hintText: 'Six digits',
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(error!, style: const TextStyle(color: Colors.redAccent)),
+                ],
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ProtoButton(
+                    label: 'Sign in',
+                    loading: busy,
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            update(() {
+                              busy = true;
+                              error = null;
+                            });
+                            try {
+                              await widget.onApiSignIn!(
+                                _phoneController.text.trim(),
+                                _codeController.text,
+                              );
+                              if (!sheetContext.mounted) return;
+                              Navigator.of(sheetContext).pop();
+                              widget.onContinue();
+                            } on AuthException catch (failure) {
+                              if (sheetContext.mounted) {
+                                update(() => error = failure.message);
+                              }
+                            } catch (_) {
+                              if (sheetContext.mounted) {
+                                update(
+                                  () => error =
+                                      'Sign-in failed. Please try again.',
+                                );
+                              }
+                            } finally {
+                              if (sheetContext.mounted)
+                                update(() => busy = false);
+                            }
+                          },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -151,8 +277,11 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
                       const ProtoBrand(size: 30),
                       Container(
@@ -231,9 +360,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Enter your mobile number to get started.',
-                    style: TextStyle(color: ProtoColors.muted, fontSize: 13),
+                  Text(
+                    widget.liveAuth
+                        ? 'Enter the international phone number of your development customer.'
+                        : 'Enter your mobile number to get started.',
+                    style: const TextStyle(
+                      color: ProtoColors.muted,
+                      fontSize: 13,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   Form(
@@ -244,17 +378,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       keyboardType: TextInputType.phone,
                       textInputAction: TextInputAction.done,
                       onFieldSubmitted: (_) => _continue(),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(10),
-                      ],
+                      inputFormatters: widget.liveAuth
+                          ? [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[+0-9]'),
+                              ),
+                              LengthLimitingTextInputFormatter(16),
+                            ]
+                          : [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(10),
+                            ],
                       style: const TextStyle(
                         color: ProtoColors.text,
                         fontSize: 16,
                         letterSpacing: 0.7,
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Mobile number',
+                        hintText: widget.liveAuth
+                            ? '+15550001001'
+                            : 'Mobile number',
                         hintStyle: const TextStyle(
                           color: ProtoColors.muted,
                           fontSize: 14,
@@ -266,19 +409,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           horizontal: 16,
                           vertical: 18,
                         ),
-                        prefixIcon: const SizedBox(
-                          width: 68,
-                          child: Center(
-                            child: Text(
-                              '+91',
-                              style: TextStyle(
-                                color: ProtoColors.text,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                        prefixIcon: widget.liveAuth
+                            ? null
+                            : const SizedBox(
+                                width: 68,
+                                child: Center(
+                                  child: Text(
+                                    '+91',
+                                    style: TextStyle(
+                                      color: ProtoColors.text,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
                           borderSide: const BorderSide(
@@ -297,6 +442,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       validator: (value) {
+                        if (widget.liveAuth) {
+                          return value != null &&
+                                  RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(value)
+                              ? null
+                              : 'Enter a valid international phone number.';
+                        }
                         if (value == null || value.length != 10) {
                           return 'Enter a 10-digit mobile number.';
                         }
@@ -314,10 +465,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Center(
+                  Center(
                     child: Text(
-                      'LOCAL DEMO · NO OTP REQUIRED',
-                      style: TextStyle(
+                      widget.liveAuth
+                          ? 'DEVELOPMENT SIGN-IN · NO SMS SENT'
+                          : 'LOCAL DEMO · NO OTP REQUIRED',
+                      style: const TextStyle(
                         color: ProtoColors.muted,
                         fontSize: 9,
                         fontWeight: FontWeight.w600,

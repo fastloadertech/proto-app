@@ -1,13 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_card.dart';
-import '../data/local_catalog_repository.dart';
+import '../domain/catalog_repository.dart';
 import '../domain/product.dart';
 import 'product_detail_screen.dart';
 
-enum _CatalogSort { recommended, priceLow, priceHigh, topRated }
+enum _PriceBand {
+  under500('Under ₹500', null, 499.99),
+  from500to999('₹500–₹999', 500, 999.99),
+  from1000to1999('₹1,000–₹1,999', 1000, 1999.99),
+  over2000('₹2,000+', 2000, null);
+
+  const _PriceBand(this.label, this.min, this.max);
+
+  final String label;
+  final double? min;
+  final double? max;
+}
 
 class ProductListingScreen extends StatefulWidget {
   const ProductListingScreen({
@@ -28,7 +41,16 @@ class ProductListingScreen extends StatefulWidget {
 class _ProductListingScreenState extends State<ProductListingScreen> {
   late final TextEditingController _search;
   String? _categoryId;
-  _CatalogSort _sort = _CatalogSort.recommended;
+  CatalogSort _sort = CatalogSort.recommended;
+  _PriceBand? _priceBand;
+  ProductForm? _form;
+  bool _availableOnly = false;
+  Timer? _searchTimer;
+  int _searchVersion = 0;
+  bool _startedRemoteSearch = false;
+  bool _searching = false;
+  String? _searchError;
+  List<Product>? _remoteProducts;
 
   @override
   void initState() {
@@ -38,49 +60,108 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_startedRemoteSearch && AppScope.of(context).liveCatalog) {
+      _startedRemoteSearch = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _requestSearch(immediate: true);
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _searchTimer?.cancel();
     _search.dispose();
     super.dispose();
   }
 
   String get _title {
-    for (final category in LocalCatalogRepository.categories) {
+    for (final category in AppScope.of(context).catalog.categories) {
       if (category.id == _categoryId) return category.title;
     }
     return 'The Proto store';
   }
 
-  List<Product> get _products {
-    final products = LocalCatalogRepository.search(_search.text)
-        .where(
-          (product) => _categoryId == null || product.categoryId == _categoryId,
-        )
-        .toList();
-    switch (_sort) {
-      case _CatalogSort.recommended:
-        break;
-      case _CatalogSort.priceLow:
-        products.sort((a, b) => a.price.compareTo(b.price));
-        break;
-      case _CatalogSort.priceHigh:
-        products.sort((a, b) => b.price.compareTo(a.price));
-        break;
-      case _CatalogSort.topRated:
-        products.sort((a, b) => b.rating.compareTo(a.rating));
-        break;
+  List<Product> get _products =>
+      _remoteProducts ??
+      AppScope.of(context).catalog.browse(
+        query: _search.text,
+        categoryId: _categoryId,
+        minPrice: _priceBand?.min,
+        maxPrice: _priceBand?.max,
+        form: _form,
+        availableOnly: _availableOnly,
+        sort: _sort,
+      );
+
+  void _requestSearch({bool immediate = false}) {
+    if (!AppScope.of(context).liveCatalog) return;
+    _searchTimer?.cancel();
+    final version = ++_searchVersion;
+    setState(() {
+      _searching = true;
+      _searchError = null;
+      _remoteProducts = null;
+    });
+    if (immediate) {
+      unawaited(_runSearch(version));
+    } else {
+      _searchTimer = Timer(const Duration(milliseconds: 300), () {
+        unawaited(_runSearch(version));
+      });
     }
-    return products;
   }
 
-  String _sortLabel(_CatalogSort sort) => switch (sort) {
-    _CatalogSort.recommended => 'Recommended',
-    _CatalogSort.priceLow => 'Price: low to high',
-    _CatalogSort.priceHigh => 'Price: high to low',
-    _CatalogSort.topRated => 'Top rated',
+  Future<void> _runSearch(int version) async {
+    try {
+      final results = await AppScope.of(context).searchCatalog(
+        query: _search.text,
+        categoryId: _categoryId,
+        minPrice: _priceBand?.min,
+        maxPrice: _priceBand?.max,
+        form: _form,
+        availableOnly: _availableOnly,
+        sort: _sort,
+      );
+      if (!mounted || version != _searchVersion) return;
+      setState(() {
+        _remoteProducts = results;
+        _searching = false;
+      });
+    } on CatalogLoadException catch (error) {
+      if (!mounted || version != _searchVersion) return;
+      setState(() {
+        _searchError = '${error.message} Showing loaded products.';
+        _searching = false;
+      });
+    }
+  }
+
+  String _sortLabel(CatalogSort sort) => switch (sort) {
+    CatalogSort.recommended => 'Recommended',
+    CatalogSort.priceLow => 'Price: low to high',
+    CatalogSort.priceHigh => 'Price: high to low',
+    CatalogSort.name => 'Name: A to Z',
+    CatalogSort.popular => 'Most popular',
+    CatalogSort.topRated => 'Top rated',
   };
 
+  String _formLabel(ProductForm form) => switch (form) {
+    ProductForm.tub => 'Tubs',
+    ProductForm.pouch => 'Pouches',
+    ProductForm.bar => 'Bars',
+    ProductForm.bottle => 'Bottles',
+  };
+
+  int get _activeFilterCount =>
+      (_priceBand == null ? 0 : 1) +
+      (_form == null ? 0 : 1) +
+      (_availableOnly ? 1 : 0);
+
   Future<void> _showSort() async {
-    final selected = await showModalBottomSheet<_CatalogSort>(
+    final selected = await showModalBottomSheet<CatalogSort>(
       context: context,
       isScrollControlled: true,
       backgroundColor: ProtoColors.surface,
@@ -107,7 +188,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                   style: TextStyle(color: ProtoColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
-                for (final sort in _CatalogSort.values)
+                for (final sort in CatalogSort.values)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(_sortLabel(sort)),
@@ -127,15 +208,222 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
         ),
       ),
     );
-    if (selected != null && mounted) setState(() => _sort = selected);
+    if (selected != null && mounted) {
+      setState(() => _sort = selected);
+      _requestSearch();
+    }
+  }
+
+  Future<void> _showFilters() async {
+    var selectedCategory = _categoryId;
+    var selectedPrice = _priceBand;
+    var selectedForm = _form;
+    var selectedAvailableOnly = _availableOnly;
+    final result =
+        await showModalBottomSheet<
+          ({
+            String? category,
+            _PriceBand? price,
+            ProductForm? form,
+            bool availableOnly,
+          })
+        >(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: ProtoColors.surface,
+          showDragHandle: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          builder: (context) => StatefulBuilder(
+            builder: (context, updateSheet) => SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Refine your fuel',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Choose a category, availability, price and type.',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      const Text(
+                        'CATEGORY',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _FilterChip(
+                            label: 'All categories',
+                            selected: selectedCategory == null,
+                            onTap: () =>
+                                updateSheet(() => selectedCategory = null),
+                          ),
+                          for (final category in AppScope.of(
+                            context,
+                          ).catalog.categories)
+                            _FilterChip(
+                              label: category.title,
+                              selected: selectedCategory == category.id,
+                              onTap: () => updateSheet(
+                                () => selectedCategory = category.id,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Available only'),
+                        subtitle: const Text(
+                          'Show products ready to order',
+                          style: TextStyle(color: ProtoColors.muted),
+                        ),
+                        value: selectedAvailableOnly,
+                        activeThumbColor: ProtoColors.lime,
+                        onChanged: (value) =>
+                            updateSheet(() => selectedAvailableOnly = value),
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'PRICE RANGE',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _FilterChip(
+                            label: 'Any price',
+                            selected: selectedPrice == null,
+                            onTap: () =>
+                                updateSheet(() => selectedPrice = null),
+                          ),
+                          for (final band in _PriceBand.values)
+                            _FilterChip(
+                              label: band.label,
+                              selected: selectedPrice == band,
+                              onTap: () =>
+                                  updateSheet(() => selectedPrice = band),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'PRODUCT TYPE',
+                        style: TextStyle(
+                          color: ProtoColors.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _FilterChip(
+                            label: 'All types',
+                            selected: selectedForm == null,
+                            onTap: () => updateSheet(() => selectedForm = null),
+                          ),
+                          for (final form in ProductForm.values)
+                            _FilterChip(
+                              label: _formLabel(form),
+                              selected: selectedForm == form,
+                              onTap: () =>
+                                  updateSheet(() => selectedForm = form),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () => updateSheet(() {
+                              selectedCategory = null;
+                              selectedPrice = null;
+                              selectedForm = null;
+                              selectedAvailableOnly = false;
+                            }),
+                            child: const Text('Clear filters'),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(context).pop((
+                                category: selectedCategory,
+                                price: selectedPrice,
+                                form: selectedForm,
+                                availableOnly: selectedAvailableOnly,
+                              )),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: ProtoColors.lime,
+                                foregroundColor: ProtoColors.background,
+                                minimumSize: const Size.fromHeight(48),
+                              ),
+                              child: const Text('Show products'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+    if (result != null && mounted) {
+      setState(() {
+        _categoryId = result.category;
+        _priceBand = result.price;
+        _form = result.form;
+        _availableOnly = result.availableOnly;
+      });
+      _requestSearch();
+    }
   }
 
   void _clearFilters() {
     _search.clear();
     setState(() {
       _categoryId = null;
-      _sort = _CatalogSort.recommended;
+      _sort = CatalogSort.recommended;
+      _priceBand = null;
+      _form = null;
+      _availableOnly = false;
     });
+    _requestSearch();
   }
 
   @override
@@ -144,7 +432,63 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
     final controller = AppScope.of(context);
     return Scaffold(
       backgroundColor: ProtoColors.background,
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        toolbarHeight: 72,
+        titleSpacing: 20,
+        title: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1200),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: IconButton.styleFrom(
+                    backgroundColor: ProtoColors.surface,
+                    side: const BorderSide(color: ProtoColors.border),
+                  ),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                ),
+                const Spacer(),
+                AnimatedBuilder(
+                  animation: controller,
+                  builder: (context, _) => Tooltip(
+                    message: 'View bag',
+                    child: TextButton.icon(
+                      onPressed: () => Navigator.of(context).pushNamed('/bag'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: ProtoColors.text,
+                        backgroundColor: ProtoColors.surface,
+                        side: const BorderSide(color: ProtoColors.border),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        minimumSize: const Size(112, 44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.shopping_bag_outlined,
+                        color: ProtoColors.lime,
+                        size: 17,
+                      ),
+                      label: Text(
+                        '${controller.cartCount} in bag',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
+        top: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final contentWidth = constraints.maxWidth
@@ -169,58 +513,6 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            IconButton(
-                              tooltip: 'Back',
-                              onPressed: () => Navigator.of(context).pop(),
-                              style: IconButton.styleFrom(
-                                backgroundColor: ProtoColors.surface,
-                                side: const BorderSide(
-                                  color: ProtoColors.border,
-                                ),
-                              ),
-                              icon: const Icon(
-                                Icons.arrow_back_rounded,
-                                size: 20,
-                              ),
-                            ),
-                            const Spacer(),
-                            AnimatedBuilder(
-                              animation: controller,
-                              builder: (context, _) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: ProtoColors.surface,
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(color: ProtoColors.border),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.shopping_bag_outlined,
-                                      color: ProtoColors.lime,
-                                      size: 17,
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Text(
-                                      '${controller.cartCount} in bag',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 25),
                         const Text(
                           'GOOD FUEL. ON DEMAND.',
                           style: TextStyle(
@@ -243,7 +535,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                         TextField(
                           controller: _search,
                           autofocus: widget.focusSearch,
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) {
+                            setState(() {});
+                            _requestSearch();
+                          },
                           textInputAction: TextInputAction.search,
                           onSubmitted: (_) => FocusScope.of(context).unfocus(),
                           style: const TextStyle(fontSize: 14),
@@ -267,6 +562,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                                     onPressed: () {
                                       _search.clear();
                                       setState(() {});
+                                      _requestSearch();
                                     },
                                     icon: const Icon(
                                       Icons.close_rounded,
@@ -305,51 +601,155 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                               _CategoryChip(
                                 label: 'All products',
                                 selected: _categoryId == null,
-                                onTap: () => setState(() => _categoryId = null),
+                                onTap: () {
+                                  setState(() => _categoryId = null);
+                                  _requestSearch();
+                                },
                               ),
-                              for (final category
-                                  in LocalCatalogRepository.categories) ...[
+                              for (final category in AppScope.of(
+                                context,
+                              ).catalog.categories) ...[
                                 const SizedBox(width: 8),
                                 _CategoryChip(
                                   label: category.title,
                                   selected: _categoryId == category.id,
-                                  onTap: () =>
-                                      setState(() => _categoryId = category.id),
+                                  onTap: () {
+                                    setState(() => _categoryId = category.id);
+                                    _requestSearch();
+                                  },
                                 ),
                               ],
                             ],
                           ),
                         ),
                         const SizedBox(height: 24),
+                        if (_searching) ...[
+                          const LinearProgressIndicator(minHeight: 2),
+                          const SizedBox(height: 10),
+                        ],
+                        if (_searchError != null) ...[
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              Text(
+                                _searchError!,
+                                style: const TextStyle(
+                                  color: ProtoColors.muted,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    _requestSearch(immediate: true),
+                                child: const Text('Retry search'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                        ],
                         Row(
                           children: [
                             Expanded(
                               child: Text(
                                 '${products.length} ${products.length == 1 ? 'essential' : 'essentials'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: ProtoColors.muted,
                                   fontSize: 12,
                                 ),
                               ),
                             ),
-                            TextButton.icon(
-                              onPressed: _showSort,
-                              style: TextButton.styleFrom(
-                                foregroundColor: ProtoColors.text,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 6,
-                                ),
-                                minimumSize: Size.zero,
+                            OutlinedButton.icon(
+                              onPressed: _showFilters,
+                              icon: const Icon(
+                                Icons.filter_list_rounded,
+                                size: 16,
                               ),
-                              icon: const Icon(Icons.tune_rounded, size: 16),
                               label: Text(
-                                _sortLabel(_sort),
-                                style: const TextStyle(fontSize: 11),
+                                _activeFilterCount == 0
+                                    ? 'Filters'
+                                    : 'Filters ($_activeFilterCount)',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: _activeFilterCount == 0
+                                    ? ProtoColors.text
+                                    : ProtoColors.lime,
+                                side: BorderSide(
+                                  color: _activeFilterCount == 0
+                                      ? ProtoColors.border
+                                      : ProtoColors.lime,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                minimumSize: const Size(0, 38),
                               ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 6),
+                        TextButton.icon(
+                          onPressed: _showSort,
+                          style: TextButton.styleFrom(
+                            foregroundColor: ProtoColors.text,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            minimumSize: Size.zero,
+                          ),
+                          icon: const Icon(Icons.sort_rounded, size: 16),
+                          label: Text(
+                            _sortLabel(_sort),
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        if (_activeFilterCount > 0) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (_priceBand != null)
+                                InputChip(
+                                  label: Text(_priceBand!.label),
+                                  onDeleted: () {
+                                    setState(() => _priceBand = null);
+                                    _requestSearch();
+                                  },
+                                  deleteIcon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                  ),
+                                ),
+                              if (_form != null)
+                                InputChip(
+                                  label: Text(_formLabel(_form!)),
+                                  onDeleted: () {
+                                    setState(() => _form = null);
+                                    _requestSearch();
+                                  },
+                                  deleteIcon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                  ),
+                                ),
+                              if (_availableOnly)
+                                InputChip(
+                                  label: const Text('Available only'),
+                                  onDeleted: () {
+                                    setState(() => _availableOnly = false);
+                                    _requestSearch();
+                                  },
+                                  deleteIcon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 14),
                       ],
                     ),
@@ -385,10 +785,13 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          const Text(
-                            'Try another search or explore\nthe rest of the Proto store.',
+                          Text(
+                            _search.text.trim().isEmpty &&
+                                    _activeFilterCount > 0
+                                ? 'Try another price or type, or clear your filters.'
+                                : 'Try another search or explore\nthe rest of the Proto store.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: ProtoColors.muted,
                               fontSize: 13,
                               height: 1.6,
@@ -417,7 +820,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                         crossAxisCount: columns,
                         crossAxisSpacing: 14,
                         mainAxisSpacing: 14,
-                        mainAxisExtent: cardWidth / 1.06 + 168,
+                        mainAxisExtent: ProductCard.gridExtent(
+                          context,
+                          cardWidth,
+                        ),
                       ),
                       itemBuilder: (context, index) => ProductCard(
                         product: products[index],
@@ -471,6 +877,33 @@ class _CategoryChip extends StatelessWidget {
           ),
         ),
       ),
+    ),
+  );
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ChoiceChip(
+    label: Text(label),
+    selected: selected,
+    onSelected: (_) => onTap(),
+    showCheckmark: false,
+    backgroundColor: ProtoColors.elevated,
+    selectedColor: ProtoColors.lime.withValues(alpha: .15),
+    side: BorderSide(color: selected ? ProtoColors.lime : ProtoColors.border),
+    labelStyle: TextStyle(
+      color: selected ? ProtoColors.lime : ProtoColors.text,
+      fontSize: 12,
     ),
   );
 }

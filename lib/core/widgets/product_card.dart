@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../features/catalog/domain/product.dart';
+import '../formatters/currency.dart';
 import '../state/app_controller.dart';
 import '../theme/proto_theme.dart';
 import 'product_artwork.dart';
@@ -12,13 +13,25 @@ class ProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
 
+  static double gridExtent(BuildContext context, double cardWidth) {
+    final textGrowth = MediaQuery.textScalerOf(context).scale(14) - 14;
+    return cardWidth / 1.06 + 168 + (textGrowth > 0 ? textGrowth * 5 : 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
+    final textGrowth = MediaQuery.textScalerOf(context).scale(14) - 14;
+    final defaultFlavor = product.flavors.isEmpty
+        ? null
+        : product.flavors.first;
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final quantity = controller.quantityFor(product.id);
+        final quantity = controller.quantityFor(
+          product.id,
+          flavor: defaultFlavor,
+        );
         return Material(
           color: ProtoColors.surface,
           clipBehavior: Clip.antiAlias,
@@ -50,7 +63,7 @@ class ProductCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (product.badge.isNotEmpty)
+                      if (product.badge.isNotEmpty || !product.isAvailable)
                         Positioned(
                           left: 10,
                           right: 45,
@@ -68,11 +81,15 @@ class ProductCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                product.badge.toUpperCase(),
+                                product.isAvailable
+                                    ? product.badge.toUpperCase()
+                                    : 'UNAVAILABLE',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: ProtoColors.lime,
+                                style: TextStyle(
+                                  color: product.isAvailable
+                                      ? ProtoColors.lime
+                                      : Colors.white,
                                   fontSize: 8,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: .7,
@@ -108,7 +125,7 @@ class ProductCard extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -121,11 +138,12 @@ class ProductCard extends StatelessWidget {
                           fontSize: 9,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 1.1,
+                          height: 1.2,
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 4),
                       SizedBox(
-                        height: 35,
+                        height: 35 + (textGrowth > 0 ? textGrowth * 2.4 : 0),
                         child: Text(
                           product.name,
                           maxLines: 2,
@@ -138,7 +156,7 @@ class ProductCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 4),
                       Text(
                         product.weightLabel,
                         maxLines: 1,
@@ -146,106 +164,149 @@ class ProductCard extends StatelessWidget {
                         style: const TextStyle(
                           color: ProtoColors.muted,
                           fontSize: 11,
+                          height: 1.2,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '₹${product.price.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    color: ProtoColors.text,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    height: 1.1,
-                                  ),
-                                ),
-                                if (product.originalPrice > product.price) ...[
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    '₹${product.originalPrice.toStringAsFixed(0)}',
-                                    style: const TextStyle(
-                                      color: ProtoColors.muted,
-                                      fontSize: 10,
-                                      decoration: TextDecoration.lineThrough,
-                                      height: 1.1,
-                                    ),
-                                  ),
-                                ],
-                              ],
+                          Text(
+                            formatPrice(product.price),
+                            style: const TextStyle(
+                              color: ProtoColors.text,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              height: 1.1,
                             ),
                           ),
-                          if (quantity == 0)
-                            SizedBox(
-                              height: 32,
-                              child: OutlinedButton(
-                                onPressed: () => controller.add(product),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: ProtoColors.lime,
-                                  side: const BorderSide(
-                                    color: ProtoColors.lime,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                  ),
-                                  minimumSize: Size.zero,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(9),
-                                  ),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'ADD',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(width: 5),
-                                    Icon(Icons.add_rounded, size: 15),
-                                  ],
+                          if (product.originalPrice > product.price) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                formatPrice(product.originalPrice),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: ProtoColors.muted,
+                                  fontSize: 10,
+                                  decoration: TextDecoration.lineThrough,
+                                  height: 1.1,
                                 ),
                               ),
-                            )
-                          else
-                            Container(
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: ProtoColors.lime,
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (!product.isAvailable)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: OutlinedButton(
+                            onPressed: null,
+                            style: OutlinedButton.styleFrom(
+                              disabledForegroundColor: ProtoColors.muted,
+                              side: const BorderSide(color: ProtoColors.border),
+                              shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(9),
                               ),
-                              child: Row(
+                            ),
+                            child: const Text(
+                              'UNAVAILABLE',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (quantity == 0)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: Tooltip(
+                            message: defaultFlavor == null
+                                ? 'Add ${product.name} to bag'
+                                : 'Add ${product.name}, $defaultFlavor, to bag',
+                            child: OutlinedButton(
+                              onPressed: () => controller.add(
+                                product,
+                                flavor: defaultFlavor,
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: ProtoColors.lime,
+                                side: const BorderSide(color: ProtoColors.lime),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                minimumSize: Size.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                              ),
+                              child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  _QuantityButton(
-                                    label: 'Remove one ${product.name}',
-                                    icon: Icons.remove_rounded,
-                                    onPressed: () => controller.remove(product),
-                                  ),
                                   Text(
-                                    '$quantity',
-                                    style: const TextStyle(
-                                      color: ProtoColors.background,
-                                      fontSize: 12,
+                                    'ADD',
+                                    style: TextStyle(
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
-                                  _QuantityButton(
-                                    label: 'Add one ${product.name}',
-                                    icon: Icons.add_rounded,
-                                    onPressed: () => controller.add(product),
-                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(Icons.add_rounded, size: 18),
                                 ],
                               ),
                             ),
-                        ],
-                      ),
+                          ),
+                        )
+                      else
+                        Container(
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: ProtoColors.lime,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Row(
+                            children: [
+                              _QuantityButton(
+                                label: 'Remove one ${product.name}',
+                                icon: Icons.remove_rounded,
+                                onPressed: () => controller.remove(
+                                  product,
+                                  flavor: defaultFlavor,
+                                ),
+                              ),
+                              Expanded(
+                                child: Semantics(
+                                  label: '${product.name} quantity in bag',
+                                  value: '$quantity',
+                                  liveRegion: true,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      '$quantity',
+                                      style: const TextStyle(
+                                        color: ProtoColors.background,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              _QuantityButton(
+                                label: 'Add one ${product.name}',
+                                icon: Icons.add_rounded,
+                                onPressed: () => controller.add(
+                                  product,
+                                  flavor: defaultFlavor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -274,12 +335,12 @@ class _QuantityButton extends StatelessWidget {
     tooltip: label,
     onPressed: onPressed,
     padding: EdgeInsets.zero,
-    constraints: const BoxConstraints.tightFor(width: 26, height: 32),
+    constraints: const BoxConstraints.tightFor(width: 44, height: 44),
     style: IconButton.styleFrom(
-      minimumSize: const Size(26, 32),
-      maximumSize: const Size(26, 32),
+      minimumSize: const Size(44, 44),
+      maximumSize: const Size(44, 44),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     ),
-    icon: Icon(icon, size: 15, color: ProtoColors.background),
+    icon: Icon(icon, size: 19, color: ProtoColors.background),
   );
 }

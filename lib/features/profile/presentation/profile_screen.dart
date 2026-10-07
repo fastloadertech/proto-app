@@ -4,21 +4,121 @@ import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_card.dart';
 import '../../../core/widgets/proto_button.dart';
-import '../../catalog/data/local_catalog_repository.dart';
 import '../../catalog/presentation/product_detail_screen.dart';
+import 'profile_settings_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
     required this.onBrowse,
     required this.onSignIn,
+    this.onLogout,
   });
   final VoidCallback onBrowse, onSignIn;
+  final VoidCallback? onLogout;
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final _orderUpdates = ValueNotifier<bool>(true);
+  final _productOffers = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _orderUpdates.dispose();
+    _productOffers.dispose();
+    super.dispose();
+  }
+
+  void _openSettings() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ProfileSettingsScreen(
+        orderUpdates: _orderUpdates,
+        productOffers: _productOffers,
+      ),
+    ),
+  );
+
+  void _showAbout() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: ProtoColors.surface,
+      scrollable: true,
+      title: const Text('About Proto'),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'FUEL. FAST.',
+            style: TextStyle(
+              color: ProtoColors.lime,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Proto brings protein, nutrition, and everyday fitness essentials '
+            'together in a fast shopping experience.',
+            style: TextStyle(height: 1.5),
+          ),
+          SizedBox(height: 12),
+          Text(
+            'This customer app is a local demo. Products, availability, '
+            'payments, and deliveries are simulated.',
+            style: TextStyle(color: ProtoColors.muted, height: 1.5),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
+
+  void _confirmLogout() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: ProtoColors.surface,
+      scrollable: true,
+      title: Text(
+        AppScope.of(context).currentSession?.isAuthenticated == true
+            ? 'Log out of Proto?'
+            : 'Leave the demo?',
+      ),
+      content: const Text(
+        'You will return to sign-in. Your bag, saved addresses, and orders '
+        'stay in local memory for this demo session.',
+        style: TextStyle(color: ProtoColors.muted, height: 1.5),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Stay here'),
+        ),
+        TextButton(
+          onPressed: () async {
+            await AppScope.of(context).signOut();
+            if (!dialogContext.mounted) return;
+            Navigator.of(dialogContext).pop();
+            (widget.onLogout ?? widget.onSignIn)();
+          },
+          child: const Text('Log out'),
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final saved = LocalCatalogRepository.products
+    final saved = app.catalog.products
         .where((product) => app.isSaved(product.id))
         .toList();
     return CustomScrollView(
@@ -58,9 +158,9 @@ class ProfileScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          CircleAvatar(
+                          const CircleAvatar(
                             radius: 24,
                             backgroundColor: ProtoColors.elevated,
                             child: Icon(
@@ -68,22 +168,24 @@ class ProfileScreen extends StatelessWidget {
                               color: ProtoColors.lime,
                             ),
                           ),
-                          SizedBox(width: 15),
+                          const SizedBox(width: 15),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Proto explorer',
-                                  style: TextStyle(
+                                  app.currentSession?.name ?? app.contact.name,
+                                  style: const TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                SizedBox(height: 4),
+                                const SizedBox(height: 4),
                                 Text(
-                                  'Every good routine starts somewhere.',
-                                  style: TextStyle(
+                                  app.currentSession?.isAuthenticated == true
+                                      ? '${app.currentSession!.phone} · Proto customer'
+                                      : '+91 ${app.contact.phone} · Demo customer',
+                                  style: const TextStyle(
                                     fontSize: 11,
                                     color: ProtoColors.muted,
                                   ),
@@ -95,25 +197,135 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 19),
                       ProtoButton(
-                        label: 'Try demo sign-in',
-                        onPressed: onSignIn,
+                        label: app.currentSession?.isAuthenticated == true
+                            ? 'Account active'
+                            : 'Try demo sign-in',
+                        onPressed: app.currentSession?.isAuthenticated == true
+                            ? null
+                            : widget.onSignIn,
                         outlined: true,
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 20),
+                Material(
+                  color: ProtoColors.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: ProtoColors.border),
+                  ),
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pushNamed('/orders'),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.receipt_long_outlined,
+                            color: ProtoColors.lime,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Your orders',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  '${app.orders.length} local demo ${app.orders.length == 1 ? 'order' : 'orders'}',
+                                  style: const TextStyle(
+                                    color: ProtoColors.muted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            color: ProtoColors.muted,
+                            size: 19,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Material(
+                  color: ProtoColors.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: ProtoColors.border),
+                  ),
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pushNamed('/addresses'),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            color: ProtoColors.lime,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Saved addresses',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  '${app.savedAddresses.length} local ${app.savedAddresses.length == 1 ? 'address' : 'addresses'} · Delivering to ${app.deliveryAddress.label}',
+                                  style: const TextStyle(
+                                    color: ProtoColors.muted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            color: ProtoColors.muted,
+                            size: 19,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 29),
                 Row(
                   children: [
-                    const Text(
-                      'Saved for later',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -.7,
+                    const Expanded(
+                      child: Text(
+                        'Saved for later',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.7,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 12),
                     Text(
                       '${saved.length}',
                       style: const TextStyle(
@@ -160,7 +372,7 @@ class ProfileScreen extends StatelessWidget {
                     const SizedBox(height: 20),
                     ProtoButton(
                       label: 'Explore the catalog',
-                      onPressed: onBrowse,
+                      onPressed: widget.onBrowse,
                     ),
                   ],
                 ),
@@ -185,7 +397,7 @@ class ProfileScreen extends StatelessWidget {
                     crossAxisCount: columns,
                     crossAxisSpacing: 14,
                     mainAxisSpacing: 14,
-                    mainAxisExtent: cardWidth / 1.06 + 168,
+                    mainAxisExtent: ProductCard.gridExtent(context, cardWidth),
                   ),
                   itemCount: saved.length,
                   itemBuilder: (context, index) => ProductCard(
@@ -201,11 +413,52 @@ class ProfileScreen extends StatelessWidget {
               },
             ),
           ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'More from Proto',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.7,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _ProfileLink(
+                  title: 'Settings',
+                  subtitle: 'Preview your local preferences',
+                  icon: Icons.tune_rounded,
+                  onTap: _openSettings,
+                ),
+                const SizedBox(height: 12),
+                _ProfileLink(
+                  title: 'About Proto',
+                  subtitle: 'Fuel your next level',
+                  icon: Icons.info_outline_rounded,
+                  onTap: _showAbout,
+                ),
+                const SizedBox(height: 12),
+                _ProfileLink(
+                  title: 'Log out',
+                  subtitle: app.currentSession?.isAuthenticated == true
+                      ? 'Clear this customer session'
+                      : 'Return to demo sign-in',
+                  icon: Icons.logout_rounded,
+                  onTap: _confirmLogout,
+                ),
+              ],
+            ),
+          ),
+        ),
         const SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              'PROTO / DAY 1\nLocal catalog · Session-only bag & favorites',
+              'PROTO / DAY 5\nLocal catalog · Bag, addresses & demo orders',
               style: TextStyle(
                 fontSize: 10,
                 color: ProtoColors.muted,
@@ -218,4 +471,67 @@ class ProfileScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ProfileLink extends StatelessWidget {
+  const _ProfileLink({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: ProtoColors.surface,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: const BorderSide(color: ProtoColors.border),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Icon(icon, color: ProtoColors.lime, size: 24),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: ProtoColors.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_rounded,
+              color: ProtoColors.muted,
+              size: 19,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

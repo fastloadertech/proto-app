@@ -33,6 +33,7 @@ class AppController extends ChangeNotifier {
   );
 
   final OrderRepository _orderRepository;
+  bool get liveOrders => _orderRepository is RemoteOrderRepository;
   final CatalogRepository catalog;
   bool _catalogLoading = false;
   String? _catalogError;
@@ -153,6 +154,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> signOut() async {
     await auth.logout();
+    if (liveOrders) _orderRepository.reset();
     notifyListeners();
   }
 
@@ -426,7 +428,12 @@ class AppController extends ChangeNotifier {
             discount: discount,
             promoCode: promoCode,
           );
-    _completeOrder(order, paymentMethod);
+    _completeOrder(
+      order,
+      paymentMethod,
+      selectedAddress: destination,
+      selectedContact: contact,
+    );
     return order;
   }
 
@@ -450,10 +457,17 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  void _completeOrder(ProtoOrder order, PaymentMethod paymentMethod) {
-    final needsNewAddressId = order.address.id == 'address-$_nextAddressNumber';
+  void _completeOrder(
+    ProtoOrder order,
+    PaymentMethod paymentMethod, {
+    DeliveryAddress? selectedAddress,
+    CheckoutContact? selectedContact,
+  }) {
+    final savedAddress = order.isLive
+        ? selectedAddress ?? order.address
+        : order.address;
+    final needsNewAddressId = savedAddress.id == 'address-$_nextAddressNumber';
     if (needsNewAddressId) _nextAddressNumber++;
-    final savedAddress = order.address;
     final savedIndex = _savedAddresses.indexWhere(
       (address) => address.id == savedAddress.id,
     );
@@ -462,10 +476,10 @@ class AppController extends ChangeNotifier {
     } else {
       _savedAddresses[savedIndex] = savedAddress;
     }
-    _deliveryAddress = order.address;
-    _contact = order.contact;
+    _deliveryAddress = savedAddress;
+    _contact = order.isLive ? selectedContact ?? order.contact : order.contact;
     _paymentMethod = paymentMethod;
-    _location = '${order.address.area}, ${order.address.city}';
+    _location = '${savedAddress.area}, ${savedAddress.city}';
     _bag.clear();
     _couponCode = null;
     _couponMessage = null;

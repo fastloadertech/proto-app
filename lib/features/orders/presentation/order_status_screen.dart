@@ -75,21 +75,28 @@ class OrderStatusScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
               child: _OrderLoader(
                 orderId: orderId,
-                builder: (order) => Column(
+                builder: (order, refresh) => Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _StatusHero(order: order),
                     const SizedBox(height: 24),
                     OrderTimeline(order: order),
                     const SizedBox(height: 18),
-                    ProtoButton(
-                      label: 'Advance demo status',
-                      icon: Icons.arrow_forward_rounded,
-                      onPressed: order.status.isTerminal
-                          ? null
-                          : () => _advance(context, app, order.id),
-                    ),
-                    if (order.status.canCancel) ...[
+                    if (order.isLive)
+                      ProtoButton(
+                        label: 'Refresh status',
+                        icon: Icons.refresh_rounded,
+                        onPressed: refresh,
+                      )
+                    else
+                      ProtoButton(
+                        label: 'Advance demo status',
+                        icon: Icons.arrow_forward_rounded,
+                        onPressed: order.status.isTerminal
+                            ? null
+                            : () => _advance(context, app, order.id),
+                      ),
+                    if (!order.isLive && order.status.canCancel) ...[
                       const SizedBox(height: 10),
                       ProtoButton(
                         label: 'Cancel order',
@@ -99,7 +106,9 @@ class OrderStatusScreen extends StatelessWidget {
                     ],
                     const SizedBox(height: 10),
                     Text(
-                      order.status.isTerminal
+                      order.isLive
+                          ? 'Status comes from your order in the shared backend. Live location is not available yet.'
+                          : order.status.isTerminal
                           ? 'Demo timeline complete. No real delivery was made.'
                           : 'You control this demo timeline. No live tracking is connected.',
                       textAlign: TextAlign.center,
@@ -147,7 +156,7 @@ class _OrderLoader extends StatefulWidget {
   const _OrderLoader({required this.orderId, required this.builder});
 
   final String orderId;
-  final Widget Function(ProtoOrder) builder;
+  final Widget Function(ProtoOrder, VoidCallback) builder;
 
   @override
   State<_OrderLoader> createState() => _OrderLoaderState();
@@ -185,7 +194,9 @@ class _OrderLoaderState extends State<_OrderLoader> {
       }
       if (snapshot.hasError) return _OrderError(onRetry: _retry);
       final order = AppScope.of(context).orderById(widget.orderId);
-      return order == null ? const _UnknownOrder() : widget.builder(order);
+      return order == null
+          ? const _UnknownOrder()
+          : widget.builder(order, _retry);
     },
   );
 }
@@ -326,7 +337,19 @@ class _StatusHero extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          order.status.description,
+          order.isLive
+              ? switch (order.status) {
+                  OrderStatus.pending => 'Your order was received by Proto.',
+                  OrderStatus.confirmed => 'Your order is confirmed.',
+                  OrderStatus.preparing => 'Your order is being prepared.',
+                  OrderStatus.readyForPickup => 'Ready for a delivery partner.',
+                  OrderStatus.pickedUp => 'Your order was picked up.',
+                  OrderStatus.outForDelivery =>
+                    'Your order is out for delivery.',
+                  OrderStatus.delivered => 'Your order was delivered.',
+                  OrderStatus.cancelled => 'Your order was cancelled.',
+                }
+              : order.status.description,
           style: const TextStyle(
             color: ProtoColors.muted,
             fontSize: 13,
@@ -347,7 +370,9 @@ class _StatusHero extends StatelessWidget {
             const SizedBox(width: 9),
             Expanded(
               child: Text(
-                order.status == OrderStatus.cancelled
+                order.isLive
+                    ? 'Updated ${formatOrderDate(order.updatedAt ?? order.createdAt)}. Delivery ETA and driver location are not available yet.'
+                    : order.status == OrderStatus.cancelled
                     ? 'Delivery cancelled · No driver was dispatched.'
                     : 'Sample arrival: ${_arrivalTime(order.estimatedDeliveryAt)}\nNo payment is collected or delivery arranged.',
                 style: const TextStyle(
@@ -656,10 +681,12 @@ class _UnknownOrder extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(
-          'This local order could not be found. Demo orders are available only in the current session.',
+        Text(
+          AppScope.of(context).liveOrders
+              ? 'This order could not be found in your account.'
+              : 'This local order could not be found. Demo orders are available only in the current session.',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 13,
             color: ProtoColors.muted,
             height: 1.65,

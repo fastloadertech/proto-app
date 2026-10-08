@@ -18,6 +18,8 @@ class OrderTimeline extends StatelessWidget {
             ),
             OrderStatus.cancelled,
           ]
+        : order.isLive
+        ? OrderStatus.liveStages
         : OrderStatus.deliveryStages;
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 10),
@@ -40,6 +42,7 @@ class OrderTimeline extends StatelessWidget {
               completed: index < steps.indexOf(order.status),
               active: steps[index] == order.status,
               last: index == steps.length - 1,
+              live: order.isLive,
             ),
         ],
       ),
@@ -53,10 +56,12 @@ class _TimelineStep extends StatelessWidget {
     required this.completed,
     required this.active,
     required this.last,
+    required this.live,
   });
 
   final OrderStatus step;
   final bool completed, active, last;
+  final bool live;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -119,7 +124,13 @@ class _TimelineStep extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                active
+                live
+                    ? active
+                          ? 'Current status'
+                          : completed
+                          ? 'Earlier stage'
+                          : 'Upcoming stage'
+                    : active
                     ? 'Current demo stage'
                     : completed
                     ? 'Completed in demo'
@@ -142,6 +153,8 @@ IconData orderStatusIcon(OrderStatus status) => switch (status) {
   OrderStatus.pending => Icons.receipt_long_outlined,
   OrderStatus.confirmed => Icons.verified_outlined,
   OrderStatus.preparing => Icons.inventory_2_outlined,
+  OrderStatus.readyForPickup => Icons.storefront_outlined,
+  OrderStatus.pickedUp => Icons.local_shipping_outlined,
   OrderStatus.outForDelivery => Icons.delivery_dining_rounded,
   OrderStatus.delivered => Icons.check_rounded,
   OrderStatus.cancelled => Icons.close_rounded,

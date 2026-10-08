@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/formatters/currency.dart';
+import '../../../core/api/api_failure.dart';
 import '../../../core/state/app_controller.dart';
 import '../../../core/state/coupon_pricing.dart';
 import '../../../core/theme/proto_theme.dart';
@@ -114,7 +115,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _error = null;
     });
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!app.liveOrders) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
       if (!mounted) return;
       final order = await app.submitOrder(
         address: address,
@@ -128,6 +131,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           builder: (_) => OrderConfirmationScreen(orderId: order.id),
         ),
       );
+    } on ApiFailure catch (error) {
+      if (mounted) {
+        setState(() {
+          _placingOrder = false;
+          _error = _safeOrderError(error);
+        });
+      }
     } on StateError catch (error) {
       if (mounted) {
         setState(() {
@@ -148,11 +158,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (mounted) {
         setState(() {
           _placingOrder = false;
-          _error = error.toString();
+          _error = 'Could not place the order. Your bag is safe. Try again.';
         });
       }
     }
   }
+
+  String _safeOrderError(ApiFailure error) => switch (error.kind) {
+    ApiFailureKind.authentication => 'Please sign in before placing an order.',
+    ApiFailureKind.validation =>
+      'Check item quantities and delivery details, then try again.',
+    ApiFailureKind.notFound =>
+      'A product is no longer available. Review your bag and try again.',
+    ApiFailureKind.conflict =>
+      'A product or quantity is unavailable. Review your bag and try again.',
+    ApiFailureKind.network =>
+      'Connection lost. Check your orders before retrying; your bag is safe.',
+    ApiFailureKind.forbidden => 'This account cannot place orders.',
+    ApiFailureKind.server || ApiFailureKind.unknown =>
+      'Order service is unavailable. Your bag is safe; try again.',
+  };
 
   Future<void> _chooseAddress() async {
     final result = await Navigator.of(context).pushNamed('/addresses');
@@ -380,32 +405,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _CheckoutSection(
           number: '03',
           title: 'Your way to pay',
-          subtitle: 'All payment choices are part of the local demo.',
-          child: Column(
-            children: [
-              for (final method in PaymentMethod.values.where(
-                (method) => method != PaymentMethod.online,
-              )) ...[
-                _PaymentChoice(
-                  method: method,
-                  selected: _paymentMethod == method,
-                  enabled: !_placingOrder,
-                  onTap: () => setState(() => _paymentMethod = method),
+          subtitle: app.liveOrders
+              ? 'Payment is not connected to backend orders yet.'
+              : 'All payment choices are part of the local demo.',
+          child: app.liveOrders
+              ? const Text(
+                  'No payment is collected when this order is placed.',
+                  style: TextStyle(color: ProtoColors.muted, fontSize: 12),
+                )
+              : Column(
+                  children: [
+                    for (final method in PaymentMethod.values.where(
+                      (method) => method != PaymentMethod.online,
+                    )) ...[
+                      _PaymentChoice(
+                        method: method,
+                        selected: _paymentMethod == method,
+                        enabled: !_placingOrder,
+                        onTap: () => setState(() => _paymentMethod = method),
+                      ),
+                      if (method != PaymentMethod.values.last)
+                        const SizedBox(height: 10),
+                    ],
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No money is charged. No card, UPI app, or payment service is contacted.',
+                      style: TextStyle(
+                        color: ProtoColors.muted,
+                        fontSize: 11,
+                        height: 1.6,
+                      ),
+                    ),
+                  ],
                 ),
-                if (method != PaymentMethod.values.last)
-                  const SizedBox(height: 10),
-              ],
-              const SizedBox(height: 16),
-              const Text(
-                'No money is charged. No card, UPI app, or payment service is contacted.',
-                style: TextStyle(
-                  color: ProtoColors.muted,
-                  fontSize: 11,
-                  height: 1.6,
-                ),
-              ),
-            ],
-          ),
         ),
       ],
     ),
@@ -524,14 +556,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       ),
       const SizedBox(height: 20),
-      _couponSection(app),
-      const SizedBox(height: 20),
+      if (!app.liveOrders) ...[_couponSection(app), const SizedBox(height: 20)],
       PriceSummary(
         subtotal: app.subtotal,
-        deliveryFee: app.deliveryFee,
-        savings: app.savings,
-        discount: app.couponDiscount,
+        deliveryFee: app.liveOrders ? 0 : app.deliveryFee,
+        savings: app.liveOrders ? 0 : app.savings,
+        discount: app.liveOrders ? 0 : app.couponDiscount,
+        title: app.liveOrders ? 'Estimated total' : 'Price breakdown',
       ),
+      if (app.liveOrders) ...[
+        const SizedBox(height: 8),
+        const Text(
+          'Final item prices and total are calculated by the backend when you place the order.',
+          style: TextStyle(color: ProtoColors.muted, fontSize: 11),
+        ),
+      ],
       const SizedBox(height: 20),
       if (_error != null) ...[
         Container(
@@ -558,10 +597,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         onPressed: _placingOrder || app.cartCount == 0 ? null : _placeOrder,
       ),
       const SizedBox(height: 12),
-      const Text(
-        'Local demo order · No real delivery will be made.',
+      Text(
+        app.liveOrders
+            ? 'Stored in the shared backend. No payment or delivery dispatch yet.'
+            : 'Local demo order · No real delivery will be made.',
         textAlign: TextAlign.center,
-        style: TextStyle(color: ProtoColors.muted, fontSize: 10, height: 1.6),
+        style: const TextStyle(
+          color: ProtoColors.muted,
+          fontSize: 10,
+          height: 1.6,
+        ),
       ),
     ],
   );

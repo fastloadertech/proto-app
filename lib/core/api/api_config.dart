@@ -25,6 +25,12 @@ class ApiConfig {
     'PROTO_LIVE_CATALOG',
     defaultValue: false,
   );
+
+  /// Explicit Day 11 order opt-in; local orders remain the default.
+  static const liveOrders = bool.fromEnvironment(
+    'PROTO_LIVE_ORDERS',
+    defaultValue: false,
+  );
   static const defaultProductionBaseUrl = String.fromEnvironment(
     'PROTO_PRODUCTION_API_BASE_URL',
     defaultValue: '',

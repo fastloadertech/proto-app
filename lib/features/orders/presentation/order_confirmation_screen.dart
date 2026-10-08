@@ -57,10 +57,16 @@ class OrderConfirmationScreen extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 12),
-      const Text(
-        'Orders are kept locally for this demo.',
+      Text(
+        AppScope.of(context).liveOrders
+            ? 'Open your order history to load it from your account.'
+            : 'Orders are kept locally for this demo.',
         textAlign: TextAlign.center,
-        style: TextStyle(color: ProtoColors.muted, fontSize: 13, height: 1.6),
+        style: const TextStyle(
+          color: ProtoColors.muted,
+          fontSize: 13,
+          height: 1.6,
+        ),
       ),
       const SizedBox(height: 24),
       ProtoButton(
@@ -113,7 +119,7 @@ class OrderConfirmationScreen extends StatelessWidget {
       ),
       const SizedBox(height: 12),
       Text(
-        'Thanks, ${order.contact.name.split(' ').first}. Your demo order was placed.',
+        'Thanks, ${order.contact.name.split(' ').first}. Your ${order.isLive ? 'order is saved to your account' : 'demo order was placed'}.',
         textAlign: TextAlign.center,
         style: const TextStyle(
           color: ProtoColors.muted,
@@ -145,16 +151,18 @@ class OrderConfirmationScreen extends StatelessWidget {
             _ConfirmationDetail(label: 'Order ID', value: order.id),
             const SizedBox(height: 14),
             _ConfirmationDetail(label: 'Status', value: order.status.label),
-            const SizedBox(height: 14),
-            _ConfirmationDetail(
-              label: 'Payment',
-              value: order.paymentMethod.label,
-            ),
-            const SizedBox(height: 14),
-            _ConfirmationDetail(
-              label: 'Payment status',
-              value: order.paymentStatus.label,
-            ),
+            if (!order.isLive) ...[
+              const SizedBox(height: 14),
+              _ConfirmationDetail(
+                label: 'Payment',
+                value: order.paymentMethod.label,
+              ),
+              const SizedBox(height: 14),
+              _ConfirmationDetail(
+                label: 'Payment status',
+                value: order.paymentStatus.label,
+              ),
+            ],
             const SizedBox(height: 14),
             _ConfirmationDetail(label: 'Items', value: '${order.itemCount}'),
             const SizedBox(height: 14),
@@ -197,16 +205,20 @@ class OrderConfirmationScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Demo ETA · about ${order.estimatedDeliveryAt.difference(order.createdAt).inMinutes} min',
+                        order.isLive
+                            ? 'Order placed · awaiting confirmation'
+                            : 'Demo ETA · about ${order.estimatedDeliveryAt.difference(order.createdAt).inMinutes} min',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'A preview of the Proto delivery experience.',
-                        style: TextStyle(
+                      Text(
+                        order.isLive
+                            ? 'Delivery timing and tracking are not available yet.'
+                            : 'A preview of the Proto delivery experience.',
+                        style: const TextStyle(
                           color: ProtoColors.muted,
                           fontSize: 11,
                           height: 1.5,
@@ -362,10 +374,16 @@ class OrderConfirmationScreen extends StatelessWidget {
         onPressed: () => _continueShopping(context),
       ),
       const SizedBox(height: 20),
-      const Text(
-        'Local demo · No real payment or delivery takes place.',
+      Text(
+        order.isLive
+            ? 'Saved to the shared backend · No payment or delivery dispatch yet.'
+            : 'Local demo · No real payment or delivery takes place.',
         textAlign: TextAlign.center,
-        style: TextStyle(color: ProtoColors.muted, fontSize: 10, height: 1.6),
+        style: const TextStyle(
+          color: ProtoColors.muted,
+          fontSize: 10,
+          height: 1.6,
+        ),
       ),
     ],
   );

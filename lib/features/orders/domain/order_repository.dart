@@ -37,3 +37,7 @@ abstract interface class AsyncOrderRepository {
     String? promoCode,
   });
 }
+
+/// Marks an order source backed by the shared API. Screens can hide local-only
+/// controls without knowing which concrete repository implements it.
+abstract interface class RemoteOrderRepository {}

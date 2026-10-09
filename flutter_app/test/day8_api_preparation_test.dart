@@ -22,7 +22,7 @@ void main() {
     const dev = ApiConfig(developmentBaseUrl: 'http://localhost:3101/');
     expect(
       dev.resolve(ApiRoutes.orders).toString(),
-      'http://localhost:3101/api/v1/customer/orders',
+      'http://localhost:3101/api/v1/orders',
     );
     const prod = ApiConfig(
       environment: ApiEnvironment.production,
@@ -247,7 +247,11 @@ void main() {
     expect(request.uri.path, ApiRoutes.orders);
     expect(request.headers['Authorization'], 'Bearer test-token');
     final body = Map<String, dynamic>.from(request.body as Map);
-    expect(body['paymentMethod'], 'CASH_ON_DELIVERY');
+    expect(body.containsKey('paymentMethod'), isFalse);
+    expect(body['items'], [
+      {'productId': LocalCatalogRepository.products.first.id, 'quantity': 1},
+    ]);
+    expect((body['deliveryAddress'] as Map)['line1'], address.line1);
     expect(body.containsKey('totalPaise'), isFalse);
     expect(body.containsKey('deliveryFee'), isFalse);
     app.dispose();
@@ -290,7 +294,7 @@ void main() {
     await tester.tap(find.text('Place order'));
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
-    expect(find.text('Inventory changed.'), findsOneWidget);
+    expect(find.textContaining('quantity is unavailable'), findsOneWidget);
     expect(find.text('Place order'), findsOneWidget);
     expect(app.cartCount, 1);
     fail = false;

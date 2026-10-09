@@ -1,10 +1,54 @@
 # Proto
 
-A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Day 9 can connect **customer authentication only** to the shared NestJS backend. Catalog, bag, addresses, orders, checkout, payments, and delivery still use local demo state.
+A Flutter customer app for protein and fitness essentials, with a charcoal and electric-lime identity, bundled Inter typography, and native vector product artwork. Authentication, catalog reading, orders, and read-only delivery status can each connect to the shared NestJS backend through separate opt-in flags. The local repositories remain the default. Payment, driver identity, ETA, and live location are not connected.
+
+## Day 13 reliable tracking
+
+With live orders and `PROTO_LIVE_DELIVERY_STATUS=true`, opening an order still reads its order detail and linked delivery through the existing customer API. Refresh is manual. While it runs, the last loaded order and delivery stay visible with a checking indicator; repeat taps are disabled. An order-read failure leaves that snapshot visible with a retry action. A delivery-read failure retains the last detailed delivery snapshot for the same job, labels it as previously confirmed, and offers retry. Slower earlier detail requests cannot overwrite a newer repository result. The timeline marks the current backend status, labels untimestamped earlier steps as inferred from the known sequence, and shows only `acceptedAt`, `pickedUpAt`, or `deliveredAt` when the delivery response supplies them. Mock mode and the Day 12 flag default are unchanged. This is status refresh, not GPS, polling, ETA, or driver identity.
+
+## Day 12 delivery status (opt-in)
+
+With the shared backend running, enable live auth, catalog, orders, and delivery status:
+
+```powershell
+flutter run -d chrome --dart-define=PROTO_LIVE_AUTH=true --dart-define=PROTO_LIVE_CATALOG=true --dart-define=PROTO_LIVE_ORDERS=true --dart-define=PROTO_LIVE_DELIVERY_STATUS=true --dart-define=PROTO_API_BASE_URL=http://localhost:3101
+```
+
+`PROTO_LIVE_DELIVERY_STATUS=false` is the default; it has no effect without live orders. Order history continues to use `GET /api/v1/orders` and shows order status, since that list response has no delivery link. Opening or refreshing a detail calls authenticated `GET /api/v1/orders/:id`, reads its nullable `delivery: {id,status}` link, then calls authenticated `GET /api/v1/deliveries/:id` when linked. The same `ApiClient`, base URL, customer token, and error mapping are used. Proto sends no driver-only requests and does not update delivery jobs.
+
+The order timeline and delivery timeline are separate: driver acceptance can update a delivery without advancing the order. The delivery card supports `REQUESTED`, `AVAILABLE`, `DRIVER_ASSIGNED`, `DRIVER_ARRIVING`, `ARRIVED_AT_PICKUP`, `ACCEPTED`, `PICKED_UP`, `ON_THE_WAY`, `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `DELIVERED`, and `CANCELLED`. Its five-step path applies only to the current Day 12 sequence `AVAILABLE → ACCEPTED → PICKED_UP → OUT_FOR_DELIVERY → DELIVERED`; other statuses display their exact backend label without an invented step. A null link shows that no delivery is linked yet. If the delivery read fails, the order stays visible, the status from the order detail is labelled as such, and the customer can retry. Refresh is explicit; there is no polling, GPS, driver name/contact, or ETA in this customer API response.
+
+## Day 11 live orders (opt-in)
+
+Run the shared backend and its seeded catalog/customer, then start Proto with all three flags:
+
+```powershell
+flutter run -d chrome --dart-define=PROTO_LIVE_AUTH=true --dart-define=PROTO_LIVE_CATALOG=true --dart-define=PROTO_LIVE_ORDERS=true --dart-define=PROTO_API_BASE_URL=http://localhost:3101
+```
+
+`PROTO_LIVE_ORDERS=false` remains the default and selects `MockOrderRepository`. When true, `ProtoApp` shares one `ApiClient` and authenticated session across `ApiAuthRepository`, `ApiCatalogRepository`, and `ApiOrderRepository`. Screens call `AppController` and repository interfaces; HTTP stays outside widgets. The order adapter uses only the implemented `POST /api/v1/orders`, `GET /api/v1/orders`, and `GET /api/v1/orders/:id` endpoints with a customer Bearer token. With live orders enabled, use live auth and catalog as well: local guest credentials cannot authorize orders, and local product IDs are not backend IDs.
+
+The create request contains only product IDs and quantities plus an inline address snapshot (`line1`, `line2` from Proto's area, `city`, `postalCode`, recipient name, and international phone). Multiple bag variants of the same product combine into one backend line. Proto never sends client prices, discounts, payment choices, or delivery fees. The backend checks availability and calculates prices and totals; Proto parses decimal strings to integer paise before displaying the returned snapshot. A successful response clears the bag and opens confirmation with the real order ID. A rejected or interrupted submission keeps the bag and offers a safe retry. If the connection drops after the server created an order, check order history before retrying because the backend has no idempotency key yet.
+
+History reloads from the backend newest first; detail refreshes on opening or tapping **Refresh status**. The live timeline supports `PENDING`, `CONFIRMED`, `PREPARING`, `READY_FOR_PICKUP`, `PICKED_UP`, `OUT_FOR_DELIVERY`, `DELIVERED`, and `CANCELLED`. The response preserves item names/prices, address, subtotal, delivery fee, total, creation time, and update time. Day 11 provides no payment record, ETA, driver position, polling, or Loader assignment, so live screens do not invent them. Checkout shows an estimated total until the server returns the final amount. The old Day 7/8 proposed order DTOs remain for compatibility, while `live_order_contract.dart` describes the implemented response.
+
+## Day 10 live catalog (opt-in)
+
+`Home / listing / details → AppController → CatalogRepository → ApiCatalogRepository → ApiClient → shared NestJS backend`. The existing synchronous catalog contract and local repository remain available. By default the app uses the local catalog. `PROTO_LIVE_CATALOG=true` selects the API adapter; it initially shows local products while loading, replaces them with an atomic backend snapshot after categories and products both succeed, and retains the last complete snapshot if a later refresh fails. A successful empty API response stays empty. Loading, error, retry, and empty states are visible in the catalog UI.
+
+Start the shared backend separately, then run:
+
+```powershell
+flutter run -d chrome --dart-define=PROTO_LIVE_CATALOG=true --dart-define=PROTO_LIVE_AUTH=true --dart-define=PROTO_API_BASE_URL=http://localhost:3101
+```
+
+The catalog flag works independently of live auth; omit `PROTO_LIVE_AUTH=true` to browse as a local/guest user. `ApiConfig` owns the base URL and flags. The adapter calls `GET /api/v1/catalog/categories`, `GET /api/v1/catalog/products`, and `GET /api/v1/catalog/products/:id`. Listing/search sends the backend's `category`, `search`, `available`, `active`, and `sort` query fields; price range and inferred product form remain client-side filters because the backend does not expose them. Backend category UUIDs and nested category data map into the existing UI model. Decimal price strings are parsed to paise before becoming domain prices. Nullable `imageUrl` uses Proto vector artwork; no image CDN is required. Backend products without flavor choices use the existing default bag variant. The bag and local order preserve product name and unit-price snapshots after a catalog refresh. Catalog errors are mapped to safe retry messages; failures never clear an existing bag.
+
+The backend currently omits ratings, nutrition facts, and product-form data, so live products do not display invented ratings or nutrition stats. Product artwork is inferred from names/SKUs until backend images are supplied. With only the Day 10 catalog flag enabled, orders and checkout remain local simulations. No catalog write, live inventory reservation, or Loader connection is enabled.
 
 ## Day 9 customer authentication
 
-`LoginScreen → AppController → AuthRepository → ApiAuthRepository → ApiClient → HttpApiTransport → shared NestJS backend`. Live auth is an explicit development opt-in; the default remains `LocalAuthRepository` so the Day 1–8 demo and guest path work offline. Only auth receives an HTTP transport. `ApiCatalogRepository` and `ApiOrderRepository` remain unwired.
+`LoginScreen → AppController → AuthRepository → ApiAuthRepository → ApiClient → HttpApiTransport → shared NestJS backend`. Live auth is an explicit development opt-in; the default remains `LocalAuthRepository` so the Day 1–8 demo and guest path work offline. Day 9 wired auth alone; Day 10 optionally wired the catalog; Day 11 optionally wires orders through the same transport.
 
 Start the shared backend separately following `D:\loader-app\backend\README.md`, including its migration and development seed instructions. The seed customer phone defaults to `+15550001001` unless `DEV_CUSTOMER_PHONE` was overridden. Enter the **six-digit code from the backend's ignored local `.env`** in Proto's sign-in sheet. The code is typed at runtime, is not included in Flutter source or `dart-define`, and is never stored by Proto. No SMS is sent. Do not commit the backend `.env` or a real code.
 
@@ -44,7 +88,7 @@ The screens read the catalog through `AppController.catalog` (`CatalogRepository
 
 Day 7 validation: `flutter analyze` reports no issues; all **86** tests pass; `flutter build web --no-web-resources-cdn` succeeds. Chrome was walked through Home → search → product → bag → checkout → saved address → UPI demo → confirmation → orders → reopened details, including status progression and the mock driver. Home was visually reviewed at desktop and 390 × 844 mobile size. The browser walkthrough used local data only; Android/iOS device builds and live backend integration remain future work.
 
-The proposed authenticated order routes are:
+The following Day 7 order routes were a historical proposal and are **not** the implemented Day 11 API. Use the Day 11 routes above for live orders:
 
 | Action | Route | Request | Response |
 | --- | --- | --- | --- |
@@ -138,7 +182,7 @@ test/                      Session-state and customer-journey tests
 
 Screens share a single `AppController` through the SDK's `ChangeNotifier` and `InheritedNotifier` scope. `DeliveryPricing`, `CouponPricing`, `formatPrice`, and `PriceSummary` keep bag, checkout, and order totals consistent. Local repositories supply catalog data and capture order snapshots; the order repository contract provides a boundary for a future data source.
 
-Flutter supplies navigation, state notifications, animation, forms, and painting. The single `http` package supplies cross-platform transport for Day 9 authentication. There is no catalog, order, payment, delivery, or Loader network integration.
+Flutter supplies navigation, state notifications, animation, forms, and painting. The single `http` package supplies cross-platform transport for opt-in authentication and catalog reading. There is no order, payment, delivery, or Loader network integration.
 
 The existing Expo app in the parent directory is preserved independently. Inter is bundled under the SIL Open Font License in `assets/fonts/OFL.txt`.
 

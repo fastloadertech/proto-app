@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
+import '../api/api_failure.dart';
 import '../../features/catalog/domain/product.dart';
 import '../../features/catalog/domain/catalog_repository.dart';
 import '../../features/catalog/data/local_catalog_repository.dart';
@@ -32,7 +33,113 @@ class AppController extends ChangeNotifier {
   );
 
   final OrderRepository _orderRepository;
+  bool get liveOrders => _orderRepository is RemoteOrderRepository;
+  bool get liveDeliveryStatus =>
+      _orderRepository is LiveDeliveryStatusRepository &&
+      (_orderRepository as LiveDeliveryStatusRepository).deliveryStatusEnabled;
   final CatalogRepository catalog;
+  bool _catalogLoading = false;
+  String? _catalogError;
+  bool get liveCatalog => catalog is RemoteCatalogRepository;
+  bool get catalogLoading => _catalogLoading;
+  String? get catalogError => _catalogError;
+
+  Future<void> refreshCatalog() async {
+    if (catalog is! RemoteCatalogRepository) return;
+    final remote = catalog as RemoteCatalogRepository;
+    _catalogLoading = true;
+    _catalogError = null;
+    notifyListeners();
+    try {
+      await remote.refresh();
+    } catch (_) {
+      _catalogError = remote.isLoaded
+          ? 'Could not refresh the live catalog. Showing the last loaded products.'
+          : 'Could not load the live catalog. Showing demo products.';
+    } finally {
+      _catalogLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<Product>> searchCatalog({
+    String query = '',
+    String? categoryId,
+    double? minPrice,
+    double? maxPrice,
+    ProductForm? form,
+    bool availableOnly = false,
+    CatalogSort sort = CatalogSort.recommended,
+  }) async {
+    try {
+      if (catalog is RemoteCatalogRepository) {
+        final remote = catalog as RemoteCatalogRepository;
+        return await remote.searchProducts(
+          query: query,
+          categoryId: categoryId,
+          minPrice: minPrice,
+          maxPrice: maxPrice,
+          form: form,
+          availableOnly: availableOnly,
+          sort: sort,
+        );
+      }
+      return catalog.browse(
+        query: query,
+        categoryId: categoryId,
+        minPrice: minPrice,
+        maxPrice: maxPrice,
+        form: form,
+        availableOnly: availableOnly,
+        sort: sort,
+      );
+    } on ApiFailure catch (error) {
+      throw _catalogFailure(error);
+    } catch (_) {
+      throw const CatalogLoadException('Could not load products. Try again.');
+    }
+  }
+
+  Future<Product?> loadCatalogProduct(String id) async {
+    try {
+      return catalog is RemoteCatalogRepository
+          ? await (catalog as RemoteCatalogRepository).loadById(id)
+          : catalog.getById(id);
+    } on ApiFailure catch (error) {
+      throw _catalogFailure(error);
+    } catch (_) {
+      throw const CatalogLoadException(
+        'Could not refresh this product. Try again.',
+      );
+    }
+  }
+
+  CatalogLoadException _catalogFailure(ApiFailure error) =>
+      switch (error.kind) {
+        ApiFailureKind.notFound => const CatalogLoadException(
+          'This product or category is no longer available.',
+          notFound: true,
+        ),
+        ApiFailureKind.validation => const CatalogLoadException(
+          'Check the search or filter and try again.',
+        ),
+        ApiFailureKind.authentication ||
+        ApiFailureKind.forbidden => const CatalogLoadException(
+          'Catalog access is unavailable. Try again.',
+        ),
+        ApiFailureKind.conflict => const CatalogLoadException(
+          'The catalog changed. Refresh and try again.',
+        ),
+        ApiFailureKind.network => const CatalogLoadException(
+          'Cannot reach the live catalog. Check the connection and retry.',
+        ),
+        ApiFailureKind.server => const CatalogLoadException(
+          'The catalog is temporarily unavailable. Try again shortly.',
+        ),
+        ApiFailureKind.unknown => const CatalogLoadException(
+          'Could not load products. Try again.',
+        ),
+      };
   final AuthRepository auth;
   CustomerSession? get currentSession => auth.currentSession;
   Future<void> signIn(String phone, {String? code}) async {
@@ -50,6 +157,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> signOut() async {
     await auth.logout();
+    if (liveOrders) _orderRepository.reset();
     notifyListeners();
   }
 
@@ -323,7 +431,12 @@ class AppController extends ChangeNotifier {
             discount: discount,
             promoCode: promoCode,
           );
-    _completeOrder(order, paymentMethod);
+    _completeOrder(
+      order,
+      paymentMethod,
+      selectedAddress: destination,
+      selectedContact: contact,
+    );
     return order;
   }
 
@@ -347,10 +460,17 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  void _completeOrder(ProtoOrder order, PaymentMethod paymentMethod) {
-    final needsNewAddressId = order.address.id == 'address-$_nextAddressNumber';
+  void _completeOrder(
+    ProtoOrder order,
+    PaymentMethod paymentMethod, {
+    DeliveryAddress? selectedAddress,
+    CheckoutContact? selectedContact,
+  }) {
+    final savedAddress = order.isLive
+        ? selectedAddress ?? order.address
+        : order.address;
+    final needsNewAddressId = savedAddress.id == 'address-$_nextAddressNumber';
     if (needsNewAddressId) _nextAddressNumber++;
-    final savedAddress = order.address;
     final savedIndex = _savedAddresses.indexWhere(
       (address) => address.id == savedAddress.id,
     );
@@ -359,10 +479,10 @@ class AppController extends ChangeNotifier {
     } else {
       _savedAddresses[savedIndex] = savedAddress;
     }
-    _deliveryAddress = order.address;
-    _contact = order.contact;
+    _deliveryAddress = savedAddress;
+    _contact = order.isLive ? selectedContact ?? order.contact : order.contact;
     _paymentMethod = paymentMethod;
-    _location = '${order.address.area}, ${order.address.city}';
+    _location = '${savedAddress.area}, ${savedAddress.city}';
     _bag.clear();
     _couponCode = null;
     _couponMessage = null;

@@ -1,9 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_card.dart';
-import '../data/local_catalog_repository.dart';
+import '../domain/catalog_repository.dart';
 import '../domain/product.dart';
 import 'product_detail_screen.dart';
 
@@ -43,6 +45,12 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
   _PriceBand? _priceBand;
   ProductForm? _form;
   bool _availableOnly = false;
+  Timer? _searchTimer;
+  int _searchVersion = 0;
+  bool _startedRemoteSearch = false;
+  bool _searching = false;
+  String? _searchError;
+  List<Product>? _remoteProducts;
 
   @override
   void initState() {
@@ -52,7 +60,19 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_startedRemoteSearch && AppScope.of(context).liveCatalog) {
+      _startedRemoteSearch = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _requestSearch(immediate: true);
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _searchTimer?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -64,15 +84,60 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
     return 'The Proto store';
   }
 
-  List<Product> get _products => AppScope.of(context).catalog.browse(
-    query: _search.text,
-    categoryId: _categoryId,
-    minPrice: _priceBand?.min,
-    maxPrice: _priceBand?.max,
-    form: _form,
-    availableOnly: _availableOnly,
-    sort: _sort,
-  );
+  List<Product> get _products =>
+      _remoteProducts ??
+      AppScope.of(context).catalog.browse(
+        query: _search.text,
+        categoryId: _categoryId,
+        minPrice: _priceBand?.min,
+        maxPrice: _priceBand?.max,
+        form: _form,
+        availableOnly: _availableOnly,
+        sort: _sort,
+      );
+
+  void _requestSearch({bool immediate = false}) {
+    if (!AppScope.of(context).liveCatalog) return;
+    _searchTimer?.cancel();
+    final version = ++_searchVersion;
+    setState(() {
+      _searching = true;
+      _searchError = null;
+      _remoteProducts = null;
+    });
+    if (immediate) {
+      unawaited(_runSearch(version));
+    } else {
+      _searchTimer = Timer(const Duration(milliseconds: 300), () {
+        unawaited(_runSearch(version));
+      });
+    }
+  }
+
+  Future<void> _runSearch(int version) async {
+    try {
+      final results = await AppScope.of(context).searchCatalog(
+        query: _search.text,
+        categoryId: _categoryId,
+        minPrice: _priceBand?.min,
+        maxPrice: _priceBand?.max,
+        form: _form,
+        availableOnly: _availableOnly,
+        sort: _sort,
+      );
+      if (!mounted || version != _searchVersion) return;
+      setState(() {
+        _remoteProducts = results;
+        _searching = false;
+      });
+    } on CatalogLoadException catch (error) {
+      if (!mounted || version != _searchVersion) return;
+      setState(() {
+        _searchError = '${error.message} Showing loaded products.';
+        _searching = false;
+      });
+    }
+  }
 
   String _sortLabel(CatalogSort sort) => switch (sort) {
     CatalogSort.recommended => 'Recommended',
@@ -143,7 +208,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
         ),
       ),
     );
-    if (selected != null && mounted) setState(() => _sort = selected);
+    if (selected != null && mounted) {
+      setState(() => _sort = selected);
+      _requestSearch();
+    }
   }
 
   Future<void> _showFilters() async {
@@ -342,6 +410,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
         _form = result.form;
         _availableOnly = result.availableOnly;
       });
+      _requestSearch();
     }
   }
 
@@ -354,6 +423,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
       _form = null;
       _availableOnly = false;
     });
+    _requestSearch();
   }
 
   @override
@@ -465,7 +535,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                         TextField(
                           controller: _search,
                           autofocus: widget.focusSearch,
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) {
+                            setState(() {});
+                            _requestSearch();
+                          },
                           textInputAction: TextInputAction.search,
                           onSubmitted: (_) => FocusScope.of(context).unfocus(),
                           style: const TextStyle(fontSize: 14),
@@ -489,6 +562,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                                     onPressed: () {
                                       _search.clear();
                                       setState(() {});
+                                      _requestSearch();
                                     },
                                     icon: const Icon(
                                       Icons.close_rounded,
@@ -527,7 +601,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                               _CategoryChip(
                                 label: 'All products',
                                 selected: _categoryId == null,
-                                onTap: () => setState(() => _categoryId = null),
+                                onTap: () {
+                                  setState(() => _categoryId = null);
+                                  _requestSearch();
+                                },
                               ),
                               for (final category in AppScope.of(
                                 context,
@@ -536,14 +613,40 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                                 _CategoryChip(
                                   label: category.title,
                                   selected: _categoryId == category.id,
-                                  onTap: () =>
-                                      setState(() => _categoryId = category.id),
+                                  onTap: () {
+                                    setState(() => _categoryId = category.id);
+                                    _requestSearch();
+                                  },
                                 ),
                               ],
                             ],
                           ),
                         ),
                         const SizedBox(height: 24),
+                        if (_searching) ...[
+                          const LinearProgressIndicator(minHeight: 2),
+                          const SizedBox(height: 10),
+                        ],
+                        if (_searchError != null) ...[
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              Text(
+                                _searchError!,
+                                style: const TextStyle(
+                                  color: ProtoColors.muted,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    _requestSearch(immediate: true),
+                                child: const Text('Retry search'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                        ],
                         Row(
                           children: [
                             Expanded(
@@ -611,8 +714,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                               if (_priceBand != null)
                                 InputChip(
                                   label: Text(_priceBand!.label),
-                                  onDeleted: () =>
-                                      setState(() => _priceBand = null),
+                                  onDeleted: () {
+                                    setState(() => _priceBand = null);
+                                    _requestSearch();
+                                  },
                                   deleteIcon: const Icon(
                                     Icons.close_rounded,
                                     size: 16,
@@ -621,7 +726,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                               if (_form != null)
                                 InputChip(
                                   label: Text(_formLabel(_form!)),
-                                  onDeleted: () => setState(() => _form = null),
+                                  onDeleted: () {
+                                    setState(() => _form = null);
+                                    _requestSearch();
+                                  },
                                   deleteIcon: const Icon(
                                     Icons.close_rounded,
                                     size: 16,
@@ -630,8 +738,10 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                               if (_availableOnly)
                                 InputChip(
                                   label: const Text('Available only'),
-                                  onDeleted: () =>
-                                      setState(() => _availableOnly = false),
+                                  onDeleted: () {
+                                    setState(() => _availableOnly = false);
+                                    _requestSearch();
+                                  },
                                   deleteIcon: const Icon(
                                     Icons.close_rounded,
                                     size: 16,

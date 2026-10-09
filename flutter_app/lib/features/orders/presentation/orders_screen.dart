@@ -54,7 +54,7 @@ class OrdersScreen extends StatelessWidget {
                           Text(
                             orders.isEmpty
                                 ? 'Your next routine starts with your first bag.'
-                                : '${orders.length} ${orders.length == 1 ? 'order' : 'orders'} in this local session.',
+                                : '${orders.length} ${orders.length == 1 ? 'order' : 'orders'} ${AppScope.of(context).liveOrders ? 'in your account.' : 'in this local session.'}',
                             style: const TextStyle(
                               color: ProtoColors.muted,
                               fontSize: 13,
@@ -71,18 +71,24 @@ class OrdersScreen extends StatelessWidget {
                                 color: ProtoColors.lime.withValues(alpha: .15),
                               ),
                             ),
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.science_outlined,
                                   color: ProtoColors.lime,
                                   size: 20,
                                 ),
-                                SizedBox(width: 10),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'Local demo orders. No payment is collected or delivery arranged.',
-                                    style: TextStyle(
+                                    AppScope.of(context).liveOrders
+                                        ? AppScope.of(
+                                                context,
+                                              ).liveDeliveryStatus
+                                              ? 'Orders are saved to your account. Open an order for its latest delivery status. Payment and live location are not connected.'
+                                              : 'Orders are saved to your account. Payment and live delivery are not connected yet.'
+                                        : 'Local demo orders. No payment is collected or delivery arranged.',
+                                    style: const TextStyle(
                                       color: ProtoColors.lime,
                                       fontSize: 11,
                                       height: 1.6,
@@ -233,10 +239,12 @@ class _EmptyOrders extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
-            'Place a demo order from your bag to see it here.',
+          Text(
+            AppScope.of(context).liveOrders
+                ? 'Place an order from your bag to see it here.'
+                : 'Place a demo order from your bag to see it here.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: ProtoColors.muted,
               fontSize: 13,
               height: 1.6,
@@ -394,19 +402,21 @@ class _OrderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 14),
-                const Row(
+                Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'View details',
-                      style: TextStyle(
+                      AppScope.of(context).liveDeliveryStatus && order.isLive
+                          ? 'Track'
+                          : 'View details',
+                      style: const TextStyle(
                         color: ProtoColors.lime,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    SizedBox(width: 6),
-                    Icon(
+                    const SizedBox(width: 6),
+                    const Icon(
                       Icons.arrow_forward_rounded,
                       color: ProtoColors.lime,
                       size: 21,

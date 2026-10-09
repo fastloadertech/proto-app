@@ -6,6 +6,7 @@ import '../../../core/theme/proto_theme.dart';
 import '../../../core/widgets/product_artwork.dart';
 import '../../../core/widgets/product_card.dart';
 import '../../../core/widgets/section_heading.dart';
+import '../domain/catalog_repository.dart';
 import '../domain/product.dart';
 import 'product_listing_screen.dart';
 
@@ -26,14 +27,57 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   String? _flavor;
   int _selectedQuantity = 1;
+  late Product _product;
+  bool _requestedDetail = false;
+  bool _loadingDetail = false;
+  String? _detailError;
 
   @override
   void initState() {
     super.initState();
+    _product = widget.product;
     if (widget.product.flavors.isNotEmpty) {
       _flavor = widget.product.flavors.contains(widget.initialFlavor)
           ? widget.initialFlavor
           : widget.product.flavors.first;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_requestedDetail && AppScope.of(context).liveCatalog) {
+      _requestedDetail = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadDetail();
+      });
+    }
+  }
+
+  Future<void> _loadDetail() async {
+    setState(() {
+      _loadingDetail = true;
+      _detailError = null;
+    });
+    try {
+      final product = await AppScope.of(
+        context,
+      ).loadCatalogProduct(_product.id);
+      if (!mounted || product == null) return;
+      setState(() {
+        _product = product;
+        if (_flavor != null && !product.flavors.contains(_flavor)) {
+          _flavor = product.flavors.firstOrNull;
+        }
+      });
+    } on CatalogLoadException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _detailError = error.message;
+        if (error.notFound) _product = _product.withAvailability(false);
+      });
+    } finally {
+      if (mounted) setState(() => _loadingDetail = false);
     }
   }
 
@@ -47,7 +91,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final product = widget.product;
+    final product = _product;
     final controller = AppScope.of(context);
     final relatedProducts = controller.catalog.products
         .where(
@@ -137,6 +181,27 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_loadingDetail) ...[
+                        const LinearProgressIndicator(minHeight: 2),
+                        const SizedBox(height: 14),
+                      ],
+                      if (_detailError != null) ...[
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          children: [
+                            Text(
+                              _detailError!,
+                              style: const TextStyle(color: ProtoColors.muted),
+                            ),
+                            TextButton(
+                              onPressed: _loadDetail,
+                              child: const Text('Retry product'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final information = _ProductInformation(
@@ -332,17 +397,26 @@ class _ProductInformation extends StatelessWidget {
                 ),
               ),
             ),
-            const Icon(Icons.star_rounded, color: Color(0xFFE6C76B), size: 16),
-            const SizedBox(width: 4),
-            Text(
-              product.rating.toStringAsFixed(1),
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              '(${product.reviewCount})',
-              style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
-            ),
+            if (product.reviewCount > 0) ...[
+              const Icon(
+                Icons.star_rounded,
+                color: Color(0xFFE6C76B),
+                size: 16,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                product.rating.toStringAsFixed(1),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '(${product.reviewCount})',
+                style: const TextStyle(color: ProtoColors.muted, fontSize: 11),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
@@ -507,37 +581,38 @@ class _ProductInformation extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 26),
-        Container(
-          decoration: BoxDecoration(
-            color: ProtoColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: ProtoColors.border),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                Expanded(
-                  child: _NutritionStat(
-                    value: '${product.proteinGrams}g',
-                    label: 'PROTEIN',
+        if (product.proteinGrams > 0 || product.servings > 0)
+          Container(
+            decoration: BoxDecoration(
+              color: ProtoColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: ProtoColors.border),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+            child: IntrinsicHeight(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _NutritionStat(
+                      value: '${product.proteinGrams}g',
+                      label: 'PROTEIN',
+                    ),
                   ),
-                ),
-                const VerticalDivider(color: ProtoColors.border, width: 1),
-                Expanded(
-                  child: _NutritionStat(
-                    value: '${product.servings}',
-                    label: 'SERVINGS',
+                  const VerticalDivider(color: ProtoColors.border, width: 1),
+                  Expanded(
+                    child: _NutritionStat(
+                      value: '${product.servings}',
+                      label: 'SERVINGS',
+                    ),
                   ),
-                ),
-                const VerticalDivider(color: ProtoColors.border, width: 1),
-                const Expanded(
-                  child: _NutritionStat(value: '100%', label: 'AUTHENTIC'),
-                ),
-              ],
+                  const VerticalDivider(color: ProtoColors.border, width: 1),
+                  const Expanded(
+                    child: _NutritionStat(value: '100%', label: 'AUTHENTIC'),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
         const SizedBox(height: 28),
         const Text(
           'Made for your momentum.',

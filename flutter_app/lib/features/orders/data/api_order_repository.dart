@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_failure.dart';
+import '../../../core/api/live_order_contract.dart';
+import '../../../core/api/live_delivery_contract.dart';
 import '../../../core/api/api_models.dart';
 import '../../../core/api/api_routes.dart';
 import '../../../core/api/shared_backend_contract.dart';
@@ -9,24 +11,42 @@ import '../../auth/domain/auth_repository.dart';
 import '../../catalog/domain/catalog_repository.dart';
 import '../../catalog/domain/product.dart';
 import '../domain/order.dart';
+import '../domain/delivery_status.dart';
 import '../domain/order_repository.dart';
 
-/// Opt-in order adapter for the proposed customer API. The app still injects
-/// MockOrderRepository. A future rollout must supply a transport, agree the
-/// commerce response shape, and bootstrap catalog/auth before using this.
-class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
+/// Opt-in adapter for the implemented customer order endpoints. Local orders
+/// remain the default repository selected by ProtoApp.
+class ApiOrderRepository
+    implements
+        OrderRepository,
+        AsyncOrderRepository,
+        RemoteOrderRepository,
+        LiveDeliveryStatusRepository {
   ApiOrderRepository({
     required this.client,
     required this.auth,
     required this.catalog,
+    this.loadDeliveryStatus = false,
   });
   final ApiClient client;
   final AuthRepository auth;
   final CatalogRepository catalog;
+  final bool loadDeliveryStatus;
+  @override
+  bool get deliveryStatusEnabled => loadDeliveryStatus;
   final List<ProtoOrder> _orders = [];
-  String? get _token {
+  final Map<String, DeliverySnapshot> _lastDetailedDelivery = {};
+  final Map<String, int> _detailRequestVersion = {};
+  int _resetVersion = 0;
+  String get _token {
     final session = auth.currentSession;
-    return session?.isAuthenticated == true ? session!.accessToken : null;
+    if (session?.isAuthenticated != true || session?.accessToken == null) {
+      throw const ApiFailure(
+        ApiFailureKind.authentication,
+        message: 'Please sign in to view or place orders.',
+      );
+    }
+    return session!.accessToken!;
   }
 
   @override
@@ -41,8 +61,14 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
 
   @override
   Future<List<ProtoOrder>> loadOrders() async {
+    final resetVersion = _resetVersion;
     final body = await client.get(ApiRoutes.orders, accessToken: _token);
-    final next = ApiClient.objects(body).map(_decodeOrder).toList();
+    final next = ApiClient.objects(body).map(_decodeOrder).toList()
+      ..sort((a, b) {
+        final time = b.createdAt.compareTo(a.createdAt);
+        return time != 0 ? time : b.id.compareTo(a.id);
+      });
+    if (_resetVersion != resetVersion) return orders;
     _orders
       ..clear()
       ..addAll(next);
@@ -51,8 +77,61 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
 
   @override
   Future<ProtoOrder?> loadById(String id) async {
+    final requestVersion = (_detailRequestVersion[id] ?? 0) + 1;
+    _detailRequestVersion[id] = requestVersion;
+    final resetVersion = _resetVersion;
     final body = await client.get(ApiRoutes.order(id), accessToken: _token);
-    final order = _decodeOrder(ApiClient.object(body));
+    var order = _decodeOrder(ApiClient.object(body));
+    if (loadDeliveryStatus && order.delivery != null) {
+      final link = order.delivery!;
+      try {
+        final deliveryBody = await client.get(
+          ApiRoutes.delivery(link.id),
+          accessToken: _token,
+        );
+        final dto = LiveDeliveryDto.fromJson(ApiClient.object(deliveryBody));
+        if (dto.id != link.id || dto.orderId != order.id) {
+          throw const FormatException('Delivery does not match this order.');
+        }
+        order = order.withDelivery(
+          DeliverySnapshot(
+            id: dto.id,
+            orderId: dto.orderId,
+            status: _deliveryStatus(dto.status),
+            updatedAt: dto.updatedAt,
+            acceptedAt: dto.acceptedAt,
+            pickedUpAt: dto.pickedUpAt,
+            deliveredAt: dto.deliveredAt,
+            hasDetails: true,
+          ),
+        );
+      } on ApiFailure catch (failure) {
+        order = order.withDelivery(
+          _lastDetailedDelivery[id]?.id == link.id
+              ? _lastDetailedDelivery[id]
+              : link,
+          issue: _deliveryIssue(failure),
+        );
+      } catch (_) {
+        order = order.withDelivery(
+          _lastDetailedDelivery[id]?.id == link.id
+              ? _lastDetailedDelivery[id]
+              : link,
+          issue: DeliveryIssue.invalid,
+        );
+      }
+    }
+    // A slower earlier request (or one started before logout/reset) must not
+    // replace a newer response in the customer-visible order cache.
+    if (_resetVersion != resetVersion ||
+        _detailRequestVersion[id] != requestVersion) {
+      return getById(id);
+    }
+    if (order.delivery?.hasDetails == true) {
+      _lastDetailedDelivery[id] = order.delivery!;
+    } else if (order.delivery == null) {
+      _lastDetailedDelivery.remove(id);
+    }
     _upsert(order);
     return order;
   }
@@ -67,54 +146,56 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
     double discount = 0,
     String? promoCode,
   }) async {
-    if (address.id.isEmpty) {
+    if (items.isEmpty || !address.isValid || !contact.isValid) {
       throw const ApiFailure(
         ApiFailureKind.validation,
-        message: 'Select a saved delivery address.',
+        message: 'Check your bag and delivery details.',
       );
     }
-    final request = CreateOrderRequestDto(
-      addressId: address.id,
-      paymentMethod: paymentMethod == PaymentMethod.cashOnDelivery
-          ? 'CASH_ON_DELIVERY'
-          : 'ONLINE',
-      items: items
-          .map(
-            (item) => CreateOrderLineDto(
-              productId: item.productId,
-              quantity: item.quantity,
-              flavor: item.flavor,
-            ),
-          )
-          .toList(),
-      promoCode: promoCode,
+    // The backend accepts each product once. Proto's local bag can carry the
+    // same product in multiple flavors; combine quantities for this contract.
+    final quantities = <String, int>{};
+    for (final item in items) {
+      quantities.update(
+        item.productId,
+        (quantity) => quantity + item.quantity,
+        ifAbsent: () => item.quantity,
+      );
+    }
+    if (quantities.values.any((quantity) => quantity < 1 || quantity > 99)) {
+      throw const ApiFailure(
+        ApiFailureKind.validation,
+        message: 'Choose between 1 and 99 of each product.',
+      );
+    }
+    final request = CreateLiveOrderRequestDto(
+      items: [
+        for (final entry in quantities.entries)
+          CreateLiveOrderItemDto(productId: entry.key, quantity: entry.value),
+      ],
+      address: LiveOrderAddressDto(
+        line1: address.line1.trim(),
+        line2: address.area.trim(),
+        city: address.city.trim(),
+        postalCode: address.postalCode.trim(),
+        recipientName: contact.name.trim(),
+        phone: '+91${contact.phone.trim()}',
+      ),
     );
-    // Server owns pricing and totals; local amounts are not sent.
+    // The server owns prices, fee, and total. Demo payment/coupons are not sent.
     final body = await client.post(
       ApiRoutes.orders,
       body: request.toJson(),
       accessToken: _token,
     );
-    final order = _decodeOrder(ApiClient.object(body));
+    final order = _decodeOrder(
+      ApiClient.object(body),
+      selectedAddress: address,
+      selectedContact: contact,
+      selectedPaymentMethod: paymentMethod,
+    );
     _upsert(order);
     return order;
-  }
-
-  Future<ProtoOrder> cancelAsync(String id) async {
-    final body = await client.post(
-      ApiRoutes.cancelOrder(id),
-      accessToken: _token,
-    );
-    final order = _decodeOrder(ApiClient.object(body));
-    _upsert(order);
-    return order;
-  }
-
-  Future<OrderStatus> loadStatus(String id) async {
-    final body = ApiClient.object(
-      await client.get(ApiRoutes.orderStatus(id), accessToken: _token),
-    );
-    return _status(body['status'] as String);
   }
 
   void _upsert(ProtoOrder order) {
@@ -122,7 +203,113 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
     _orders.insert(0, order);
   }
 
-  ProtoOrder _decodeOrder(Map<String, dynamic> json) {
+  ProtoOrder _decodeOrder(
+    Map<String, dynamic> json, {
+    DeliveryAddress? selectedAddress,
+    CheckoutContact? selectedContact,
+    PaymentMethod? selectedPaymentMethod,
+  }) {
+    if (!json.containsKey('payment') && !json.containsKey('deliveryJob')) {
+      try {
+        return _decodeLiveOrder(
+          LiveOrderDto.fromJson(json),
+          selectedAddress: selectedAddress,
+          selectedContact: selectedContact,
+          selectedPaymentMethod: selectedPaymentMethod,
+        );
+      } on ApiFailure {
+        rethrow;
+      } catch (_) {
+        throw const ApiFailure(
+          ApiFailureKind.unknown,
+          message: 'The order service returned an unexpected response.',
+        );
+      }
+    }
+    return _decodeLegacyOrder(json);
+  }
+
+  ProtoOrder _decodeLiveOrder(
+    LiveOrderDto dto, {
+    DeliveryAddress? selectedAddress,
+    CheckoutContact? selectedContact,
+    PaymentMethod? selectedPaymentMethod,
+  }) {
+    if (dto.currency != 'INR') {
+      throw const ApiFailure(
+        ApiFailureKind.unknown,
+        message: 'The order service returned an unsupported currency.',
+      );
+    }
+    final address = DeliveryAddress(
+      id: selectedAddress?.id ?? '',
+      label: selectedAddress?.label ?? 'Home',
+      line1: dto.address.line1,
+      area: dto.address.line2 ?? dto.address.state ?? '',
+      city: dto.address.city,
+      postalCode: dto.address.postalCode ?? '',
+    );
+    final status = _status(dto.status);
+    final stageIndex = OrderStatus.liveStages.indexOf(status);
+    return ProtoOrder(
+      id: dto.id,
+      reference: dto.reference,
+      createdAt: dto.createdAt,
+      updatedAt: dto.updatedAt,
+      // The Day 11 backend has no ETA. Live UI hides this legacy field.
+      estimatedDeliveryAt: dto.createdAt,
+      items: [
+        for (final item in dto.items)
+          OrderItem(
+            product: _productSnapshot(
+              productId: item.productId,
+              name: item.productName,
+              unitPrice: item.unitPricePaise / 100,
+            ),
+            flavor: null,
+            quantity: item.quantity,
+            unitPrice: item.unitPricePaise / 100,
+            lineTotal: item.lineTotalPaise / 100,
+          ),
+      ],
+      address: address,
+      contact: CheckoutContact(
+        name:
+            dto.address.recipientName ??
+            selectedContact?.name ??
+            auth.currentSession?.name ??
+            'Customer',
+        phone:
+            dto.address.phone ??
+            selectedContact?.phone ??
+            auth.currentSession?.phone ??
+            '',
+      ),
+      // Payment is not part of the Day 11 API. The selection is only a UI
+      // preview and is hidden when orders are later loaded from the server.
+      paymentMethod: selectedPaymentMethod ?? PaymentMethod.cashOnDelivery,
+      paymentStatus: PaymentStatus.notCharged,
+      deliveryFee: dto.deliveryFeePaise / 100,
+      status: status,
+      statusHistory: status == OrderStatus.cancelled
+          ? const [OrderStatus.pending, OrderStatus.cancelled]
+          : stageIndex < 0
+          ? [status]
+          : OrderStatus.liveStages.take(stageIndex + 1).toList(),
+      isLive: true,
+      serverSubtotalPaise: dto.subtotalPaise,
+      serverTotalPaise: dto.totalPaise,
+      delivery: dto.delivery == null
+          ? null
+          : DeliverySnapshot(
+              id: dto.delivery!.id,
+              orderId: dto.id,
+              status: _deliveryStatus(dto.delivery!.status),
+            ),
+    );
+  }
+
+  ProtoOrder _decodeLegacyOrder(Map<String, dynamic> json) {
     final dto = json.containsKey('subtotal')
         ? SharedBackendContract.order(json)
         : OrderDto.fromJson(json);
@@ -158,7 +345,11 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
       items: dto.items
           .map(
             (item) => OrderItem(
-              product: _productSnapshot(item),
+              product: _productSnapshot(
+                productId: item.productId,
+                name: item.name,
+                unitPrice: item.unitPricePaise / 100,
+              ),
               flavor: item.flavor,
               quantity: item.quantity,
               unitPrice: item.unitPricePaise / 100,
@@ -188,32 +379,40 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
     );
   }
 
-  Product _productSnapshot(OrderItemDto item) =>
-      catalog.getById(item.productId) ??
-      Product(
-        id: item.productId,
-        name: item.name,
-        brand: '',
-        categoryId: '',
-        price: item.unitPricePaise / 100,
-        originalPrice: item.unitPricePaise / 100,
-        weightLabel: '',
-        subtitle: '',
-        description: '',
-        proteinGrams: 0,
-        servings: 0,
-        rating: 0,
-        reviewCount: 0,
-        badge: '',
-        accentColor: const Color(0xFFB9ED54),
-        form: ProductForm.pouch,
-        flavors: item.flavor == null ? const [] : [item.flavor!],
-      );
+  Product _productSnapshot({
+    required String productId,
+    required String name,
+    required double unitPrice,
+  }) {
+    final artwork = catalog.getById(productId);
+    return Product(
+      id: productId,
+      name: name,
+      brand: artwork?.brand ?? 'PROTO',
+      categoryId: artwork?.categoryId ?? '',
+      price: unitPrice,
+      originalPrice: unitPrice,
+      weightLabel: artwork?.weightLabel ?? '',
+      subtitle: artwork?.subtitle ?? '',
+      description: artwork?.description ?? '',
+      proteinGrams: artwork?.proteinGrams ?? 0,
+      servings: artwork?.servings ?? 0,
+      rating: artwork?.rating ?? 0,
+      reviewCount: artwork?.reviewCount ?? 0,
+      badge: artwork?.badge ?? '',
+      accentColor: artwork?.accentColor ?? const Color(0xFFB9ED54),
+      form: artwork?.form ?? ProductForm.pouch,
+      flavors: artwork?.flavors ?? const [],
+      imageUrl: artwork?.imageUrl,
+    );
+  }
 
   OrderStatus _status(String value) => switch (value.toUpperCase()) {
     'PLACED' || 'PENDING' => OrderStatus.pending,
     'CONFIRMED' => OrderStatus.confirmed,
-    'PREPARING' || 'READY_FOR_PICKUP' => OrderStatus.preparing,
+    'PREPARING' => OrderStatus.preparing,
+    'READY_FOR_PICKUP' => OrderStatus.readyForPickup,
+    'PICKED_UP' => OrderStatus.pickedUp,
     'OUT_FOR_DELIVERY' => OrderStatus.outForDelivery,
     'DELIVERED' => OrderStatus.delivered,
     'CANCELLED' => OrderStatus.cancelled,
@@ -221,6 +420,29 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
       ApiFailureKind.unknown,
       message: 'Unknown order status: $value',
     ),
+  };
+  DeliveryStatus _deliveryStatus(String value) => switch (value.toUpperCase()) {
+    'REQUESTED' => DeliveryStatus.requested,
+    'AVAILABLE' => DeliveryStatus.available,
+    'DRIVER_ASSIGNED' => DeliveryStatus.driverAssigned,
+    'DRIVER_ARRIVING' => DeliveryStatus.driverArriving,
+    'ARRIVED_AT_PICKUP' => DeliveryStatus.arrivedAtPickup,
+    'ACCEPTED' => DeliveryStatus.accepted,
+    'PICKED_UP' => DeliveryStatus.pickedUp,
+    'ON_THE_WAY' => DeliveryStatus.onTheWay,
+    'IN_TRANSIT' => DeliveryStatus.inTransit,
+    'OUT_FOR_DELIVERY' => DeliveryStatus.outForDelivery,
+    'DELIVERED' => DeliveryStatus.delivered,
+    'CANCELLED' => DeliveryStatus.cancelled,
+    _ => throw FormatException('Unknown delivery status: $value'),
+  };
+  DeliveryIssue _deliveryIssue(ApiFailure failure) => switch (failure.kind) {
+    ApiFailureKind.authentication ||
+    ApiFailureKind.forbidden => DeliveryIssue.authentication,
+    ApiFailureKind.notFound => DeliveryIssue.missing,
+    ApiFailureKind.network => DeliveryIssue.network,
+    ApiFailureKind.server => DeliveryIssue.server,
+    _ => DeliveryIssue.invalid,
   };
   PaymentMethod _paymentMethod(String value) => switch (value.toUpperCase()) {
     'CASH_ON_DELIVERY' => PaymentMethod.cashOnDelivery,
@@ -264,5 +486,10 @@ class ApiOrderRepository implements OrderRepository, AsyncOrderRepository {
   ProtoOrder? cancel(String id) =>
       throw UnsupportedError('Use cancelAsync for API orders.');
   @override
-  void reset() => _orders.clear();
+  void reset() {
+    _resetVersion++;
+    _orders.clear();
+    _lastDetailedDelivery.clear();
+    _detailRequestVersion.clear();
+  }
 }

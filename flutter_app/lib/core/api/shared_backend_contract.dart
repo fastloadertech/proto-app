@@ -11,11 +11,14 @@ class SharedBackendContract {
 
   static ProductDto product(JsonMap json) => ProductDto(
     id: json['id'] as String,
-    categoryId: json['categoryId'] as String,
+    categoryId:
+        json['categoryId'] as String? ??
+        (json['category'] as Map)['id'] as String,
     name: json['name'] as String,
     description: json['description'] as String? ?? '',
     pricePaise: MoneyCodec.paiseFromRupees(json['price']!),
-    available: json['isActive'] as bool? ?? true,
+    available: json['available'] as bool? ?? json['isActive'] as bool? ?? true,
+    imageUrl: json['imageUrl'] as String?,
     sku: json['sku'] as String?,
     currency: json['currency'] as String? ?? 'INR',
   );

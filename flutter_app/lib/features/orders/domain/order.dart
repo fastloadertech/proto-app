@@ -1,4 +1,5 @@
 import '../../catalog/domain/product.dart';
+import 'delivery_status.dart';
 
 enum PaymentMethod {
   cashOnDelivery,
@@ -36,12 +37,24 @@ enum OrderStatus {
   preparing,
   outForDelivery,
   delivered,
-  cancelled;
+  cancelled,
+  readyForPickup,
+  pickedUp;
 
   static const deliveryStages = [
     pending,
     confirmed,
     preparing,
+    outForDelivery,
+    delivered,
+  ];
+
+  static const liveStages = [
+    pending,
+    confirmed,
+    preparing,
+    readyForPickup,
+    pickedUp,
     outForDelivery,
     delivered,
   ];
@@ -61,6 +74,8 @@ enum OrderStatus {
     pending => 'Pending',
     confirmed => 'Confirmed',
     preparing => 'Preparing',
+    readyForPickup => 'Ready for Pickup',
+    pickedUp => 'Picked Up',
     outForDelivery => 'Out for Delivery',
     delivered => 'Delivered',
     cancelled => 'Cancelled',
@@ -70,6 +85,8 @@ enum OrderStatus {
     pending => 'Your fuel is on the list. We have your order.',
     confirmed => 'Your order is confirmed in this local demo.',
     preparing => 'Your essentials are being packed with care.',
+    readyForPickup => 'Your order is ready for a delivery partner.',
+    pickedUp => 'Your order has been picked up.',
     outForDelivery => 'Your bag is on its way to your door.',
     delivered => 'Good fuel, delivered. Keep showing up.',
     cancelled => 'This demo order has been cancelled.',
@@ -172,6 +189,7 @@ class OrderItem {
     required this.flavor,
     required this.quantity,
     required this.unitPrice,
+    this.lineTotal,
   }) : product = Product(
          id: product.id,
          name: product.name,
@@ -191,6 +209,7 @@ class OrderItem {
          form: product.form,
          flavors: List.unmodifiable(product.flavors),
          isAvailable: product.isAvailable,
+         imageUrl: product.imageUrl,
        ),
        productId = product.id,
        productName = product.name;
@@ -202,8 +221,9 @@ class OrderItem {
   final String? flavor;
   final int quantity;
   final double unitPrice;
+  final double? lineTotal;
   double get subtotal => unitPrice * quantity;
-  double get total => subtotal;
+  double get total => lineTotal ?? subtotal;
 }
 
 class ProtoOrder {
@@ -222,6 +242,13 @@ class ProtoOrder {
     this.status = OrderStatus.pending,
     List<OrderStatus>? statusHistory,
     this.deliveryAssignment,
+    this.updatedAt,
+    this.reference,
+    this.isLive = false,
+    this.serverSubtotalPaise,
+    this.serverTotalPaise,
+    this.delivery,
+    this.deliveryIssue,
   }) : items = List.unmodifiable(items),
        statusHistory = List.unmodifiable(statusHistory ?? [status]);
 
@@ -239,9 +266,44 @@ class ProtoOrder {
   final OrderStatus status;
   final List<OrderStatus> statusHistory;
   final DeliveryAssignment? deliveryAssignment;
+  final DateTime? updatedAt;
+  final String? reference;
+  final bool isLive;
+  final int? serverSubtotalPaise, serverTotalPaise;
+  final DeliverySnapshot? delivery;
+  final DeliveryIssue? deliveryIssue;
 
-  double get subtotal => items.fold(0, (sum, item) => sum + item.total);
-  double get total => subtotal + deliveryFee - discount;
+  ProtoOrder withDelivery(DeliverySnapshot? next, {DeliveryIssue? issue}) =>
+      ProtoOrder(
+        id: id,
+        createdAt: createdAt,
+        estimatedDeliveryAt: estimatedDeliveryAt,
+        items: items,
+        address: address,
+        contact: contact,
+        paymentMethod: paymentMethod,
+        paymentStatus: paymentStatus,
+        deliveryFee: deliveryFee,
+        discount: discount,
+        promoCode: promoCode,
+        status: status,
+        statusHistory: statusHistory,
+        deliveryAssignment: deliveryAssignment,
+        updatedAt: updatedAt,
+        reference: reference,
+        isLive: isLive,
+        serverSubtotalPaise: serverSubtotalPaise,
+        serverTotalPaise: serverTotalPaise,
+        delivery: next,
+        deliveryIssue: issue,
+      );
+
+  double get subtotal => serverSubtotalPaise == null
+      ? items.fold(0, (sum, item) => sum + item.total)
+      : serverSubtotalPaise! / 100;
+  double get total => serverTotalPaise == null
+      ? subtotal + deliveryFee - discount
+      : serverTotalPaise! / 100;
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
   ProtoOrder withStatus(
@@ -268,6 +330,13 @@ class ProtoOrder {
       status: next,
       statusHistory: [...statusHistory, next],
       deliveryAssignment: deliveryAssignment ?? this.deliveryAssignment,
+      updatedAt: updatedAt,
+      reference: reference,
+      isLive: isLive,
+      serverSubtotalPaise: serverSubtotalPaise,
+      serverTotalPaise: serverTotalPaise,
+      delivery: delivery,
+      deliveryIssue: deliveryIssue,
     );
   }
 }

@@ -19,6 +19,24 @@ class ApiConfig {
     'PROTO_LIVE_AUTH',
     defaultValue: false,
   );
+
+  /// Explicit Day 10 catalog opt-in; local catalog remains the default.
+  static const liveCatalog = bool.fromEnvironment(
+    'PROTO_LIVE_CATALOG',
+    defaultValue: false,
+  );
+
+  /// Explicit Day 11 order opt-in; local orders remain the default.
+  static const liveOrders = bool.fromEnvironment(
+    'PROTO_LIVE_ORDERS',
+    defaultValue: false,
+  );
+
+  /// Read-only customer delivery details, effective with live orders.
+  static const liveDeliveryStatus = bool.fromEnvironment(
+    'PROTO_LIVE_DELIVERY_STATUS',
+    defaultValue: false,
+  );
   static const defaultProductionBaseUrl = String.fromEnvironment(
     'PROTO_PRODUCTION_API_BASE_URL',
     defaultValue: '',

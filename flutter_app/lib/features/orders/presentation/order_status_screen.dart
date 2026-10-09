@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/api/api_failure.dart';
 import '../../../core/formatters/currency.dart';
 import '../../../core/formatters/order_date.dart';
 import '../../../core/state/app_controller.dart';
@@ -9,6 +12,7 @@ import '../../../core/widgets/product_artwork.dart';
 import '../../../core/widgets/proto_button.dart';
 import '../domain/order.dart';
 import 'widgets/order_timeline.dart';
+import 'widgets/delivery_progress_card.dart';
 
 class OrderStatusScreen extends StatelessWidget {
   const OrderStatusScreen({super.key, required this.orderId});
@@ -75,21 +79,60 @@ class OrderStatusScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
               child: _OrderLoader(
                 orderId: orderId,
-                builder: (order) => Column(
+                builder: (order, refresh, refreshing, refreshError) => Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _StatusHero(order: order),
+                    if (refreshing) ...[
+                      const SizedBox(height: 16),
+                      Semantics(
+                        liveRegion: true,
+                        child: const Row(
+                          children: [
+                            SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(child: Text('Checking latest status…')),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (refreshError != null) ...[
+                      const SizedBox(height: 16),
+                      _RefreshError(error: refreshError, onRetry: refresh),
+                    ],
                     const SizedBox(height: 24),
-                    OrderTimeline(order: order),
-                    const SizedBox(height: 18),
-                    ProtoButton(
-                      label: 'Advance demo status',
-                      icon: Icons.arrow_forward_rounded,
-                      onPressed: order.status.isTerminal
-                          ? null
-                          : () => _advance(context, app, order.id),
+                    OrderTimeline(
+                      order: order,
+                      title: app.liveDeliveryStatus && order.isLive
+                          ? 'Order progress'
+                          : 'Delivery progress',
                     ),
-                    if (order.status.canCancel) ...[
+                    if (app.liveDeliveryStatus && order.isLive) ...[
+                      const SizedBox(height: 18),
+                      DeliveryProgressCard(order: order, onRetry: refresh),
+                    ],
+                    const SizedBox(height: 18),
+                    if (order.isLive)
+                      ProtoButton(
+                        label: app.liveDeliveryStatus
+                            ? 'Refresh order and delivery'
+                            : 'Refresh status',
+                        icon: Icons.refresh_rounded,
+                        onPressed: refresh,
+                      )
+                    else
+                      ProtoButton(
+                        label: 'Advance demo status',
+                        icon: Icons.arrow_forward_rounded,
+                        onPressed: order.status.isTerminal
+                            ? null
+                            : () => _advance(context, app, order.id),
+                      ),
+                    if (!order.isLive && order.status.canCancel) ...[
                       const SizedBox(height: 10),
                       ProtoButton(
                         label: 'Cancel order',
@@ -99,7 +142,9 @@ class OrderStatusScreen extends StatelessWidget {
                     ],
                     const SizedBox(height: 10),
                     Text(
-                      order.status.isTerminal
+                      order.isLive
+                          ? 'Status comes from your order in the shared backend. Live location is not available yet.'
+                          : order.status.isTerminal
                           ? 'Demo timeline complete. No real delivery was made.'
                           : 'You control this demo timeline. No live tracking is connected.',
                       textAlign: TextAlign.center,
@@ -147,47 +192,145 @@ class _OrderLoader extends StatefulWidget {
   const _OrderLoader({required this.orderId, required this.builder});
 
   final String orderId;
-  final Widget Function(ProtoOrder) builder;
+  final Widget Function(ProtoOrder, VoidCallback?, bool, Object?) builder;
 
   @override
   State<_OrderLoader> createState() => _OrderLoaderState();
 }
 
 class _OrderLoaderState extends State<_OrderLoader> {
-  Future<ProtoOrder?>? _future;
+  ProtoOrder? _lastOrder;
+  Object? _error;
+  bool _started = false;
+  bool _loading = true;
+  int _requestVersion = 0;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _future ??= AppScope.of(context).loadOrder(widget.orderId);
+    if (!_started) {
+      _started = true;
+      _startLoad(initial: true);
+    }
   }
 
   @override
   void didUpdateWidget(covariant _OrderLoader oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.orderId != widget.orderId) {
-      _future = AppScope.of(context).loadOrder(widget.orderId);
+      _lastOrder = null;
+      _error = null;
+      _loading = true;
+      _startLoad(initial: true);
     }
   }
 
-  void _retry() {
-    setState(() {
-      _future = AppScope.of(context).loadOrder(widget.orderId);
-    });
+  void _startLoad({bool initial = false}) {
+    if (_loading && !initial) return;
+    final app = AppScope.of(context);
+    final orderId = widget.orderId;
+    final version = ++_requestVersion;
+    if (!initial) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    unawaited(_finishLoad(app, orderId, version));
+  }
+
+  Future<void> _finishLoad(
+    AppController app,
+    String orderId,
+    int version,
+  ) async {
+    try {
+      final loaded = await app.loadOrder(orderId);
+      if (!mounted || version != _requestVersion || widget.orderId != orderId) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        if (loaded != null) {
+          _lastOrder = loaded;
+          _error = null;
+        } else if (_lastOrder != null) {
+          _error = const ApiFailure(ApiFailureKind.notFound);
+        }
+      });
+    } catch (error) {
+      if (!mounted || version != _requestVersion || widget.orderId != orderId) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _error = error;
+      });
+    }
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<ProtoOrder?>(
-    future: _future,
-    builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const _OrderLoading();
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final order = _lastOrder == null
+        ? null
+        : app.liveOrders
+        ? _lastOrder
+        : app.orderById(widget.orderId) ?? _lastOrder;
+    if (order == null) {
+      if (_loading) return const _OrderLoading();
+      if (_error != null) {
+        return _OrderError(error: _error, onRetry: _startLoad);
       }
-      if (snapshot.hasError) return _OrderError(onRetry: _retry);
-      final order = AppScope.of(context).orderById(widget.orderId);
-      return order == null ? const _UnknownOrder() : widget.builder(order);
-    },
-  );
+      return const _UnknownOrder();
+    }
+    return widget.builder(
+      order,
+      _loading ? null : _startLoad,
+      _loading,
+      _error,
+    );
+  }
+}
+
+class _RefreshError extends StatelessWidget {
+  const _RefreshError({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final failure = error is ApiFailure ? error as ApiFailure : null;
+    final expired = failure?.kind == ApiFailureKind.authentication;
+    final message = expired
+        ? 'Your session expired. The last loaded status is still shown.'
+        : failure?.kind == ApiFailureKind.notFound
+        ? 'The latest order details could not be found. Last loaded status is shown.'
+        : 'Could not refresh status. Last loaded information is shown; check your connection and try again.';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: ProtoColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ProtoColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(message, style: const TextStyle(color: ProtoColors.muted)),
+          const SizedBox(height: 12),
+          ProtoButton(
+            label: expired ? 'Sign in again' : 'Retry refresh',
+            outlined: true,
+            onPressed: expired
+                ? () => Navigator.of(context).pushNamed('/login')
+                : onRetry,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _OrderLoading extends StatelessWidget {
@@ -210,8 +353,9 @@ class _OrderLoading extends StatelessWidget {
 }
 
 class _OrderError extends StatelessWidget {
-  const _OrderError({required this.onRetry});
+  const _OrderError({required this.error, required this.onRetry});
 
+  final Object? error;
   final VoidCallback onRetry;
 
   @override
@@ -226,10 +370,16 @@ class _OrderError extends StatelessWidget {
       children: [
         const Icon(Icons.wifi_off_rounded, color: ProtoColors.lime, size: 36),
         const SizedBox(height: 16),
-        const Text(
-          'Order details are unavailable right now.',
+        Text(
+          error is ApiFailure &&
+                  (error as ApiFailure).kind == ApiFailureKind.authentication
+              ? 'Your session has expired. Sign in again to view this order.'
+              : error is ApiFailure &&
+                    (error as ApiFailure).kind == ApiFailureKind.notFound
+              ? 'This order could not be found.'
+              : 'Order details are unavailable right now.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         const Text(
@@ -238,7 +388,14 @@ class _OrderError extends StatelessWidget {
           style: TextStyle(color: ProtoColors.muted, fontSize: 12),
         ),
         const SizedBox(height: 20),
-        ProtoButton(label: 'Try again', onPressed: onRetry),
+        if (error is ApiFailure &&
+            (error as ApiFailure).kind == ApiFailureKind.authentication)
+          ProtoButton(
+            label: 'Sign in again',
+            onPressed: () => Navigator.of(context).pushNamed('/login'),
+          )
+        else
+          ProtoButton(label: 'Try again', onPressed: onRetry),
       ],
     ),
   );
@@ -283,9 +440,9 @@ class _StatusHero extends StatelessWidget {
                 color: ProtoColors.lime.withValues(alpha: .1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Text(
-                'LOCAL DEMO',
-                style: TextStyle(
+              child: Text(
+                order.isLive ? 'LIVE ORDER' : 'LOCAL DEMO',
+                style: const TextStyle(
                   color: ProtoColors.lime,
                   fontSize: 8,
                   fontWeight: FontWeight.w700,
@@ -326,7 +483,19 @@ class _StatusHero extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          order.status.description,
+          order.isLive
+              ? switch (order.status) {
+                  OrderStatus.pending => 'Your order was received by Proto.',
+                  OrderStatus.confirmed => 'Your order is confirmed.',
+                  OrderStatus.preparing => 'Your order is being prepared.',
+                  OrderStatus.readyForPickup => 'Ready for a delivery partner.',
+                  OrderStatus.pickedUp => 'Your order was picked up.',
+                  OrderStatus.outForDelivery =>
+                    'Your order is out for delivery.',
+                  OrderStatus.delivered => 'Your order was delivered.',
+                  OrderStatus.cancelled => 'Your order was cancelled.',
+                }
+              : order.status.description,
           style: const TextStyle(
             color: ProtoColors.muted,
             fontSize: 13,
@@ -347,7 +516,9 @@ class _StatusHero extends StatelessWidget {
             const SizedBox(width: 9),
             Expanded(
               child: Text(
-                order.status == OrderStatus.cancelled
+                order.isLive
+                    ? 'Updated ${formatOrderDate(order.updatedAt ?? order.createdAt)}. Delivery ETA and driver location are not available yet.'
+                    : order.status == OrderStatus.cancelled
                     ? 'Delivery cancelled · No driver was dispatched.'
                     : 'Sample arrival: ${_arrivalTime(order.estimatedDeliveryAt)}\nNo payment is collected or delivery arranged.',
                 style: const TextStyle(
@@ -656,10 +827,12 @@ class _UnknownOrder extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(
-          'This local order could not be found. Demo orders are available only in the current session.',
+        Text(
+          AppScope.of(context).liveOrders
+              ? 'This order could not be found in your account.'
+              : 'This local order could not be found. Demo orders are available only in the current session.',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 13,
             color: ProtoColors.muted,
             height: 1.65,

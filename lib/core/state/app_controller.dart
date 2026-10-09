@@ -2,33 +2,216 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
+import '../api/api_failure.dart';
 import '../../features/catalog/domain/product.dart';
+import '../../features/catalog/domain/catalog_repository.dart';
 import '../../features/catalog/data/local_catalog_repository.dart';
+import '../../features/auth/domain/auth_repository.dart';
+import '../../features/auth/data/local_auth_repository.dart';
+import '../../features/orders/data/local_order_repository.dart';
+import '../../features/orders/domain/order.dart';
+import '../../features/orders/domain/order_repository.dart';
+import 'coupon_pricing.dart';
+import 'delivery_pricing.dart';
 
-/// Day 1 session state. Data is local; nothing is persisted or sent to a server.
+/// Customer session state. All catalog, bag, and order data stays local.
 class AppController extends ChangeNotifier {
+  AppController({
+    OrderRepository? orderRepository,
+    CatalogRepository? catalogRepository,
+    AuthRepository? authRepository,
+  }) : _orderRepository = orderRepository ?? MockOrderRepository(),
+       catalog = catalogRepository ?? const LocalCatalogSource(),
+       auth = authRepository ?? LocalAuthRepository();
+
+  static const DeliveryAddress _initialAddress = DeliveryAddress(
+    line1: '42, First Main Road',
+    area: 'Indiranagar',
+    city: 'Bengaluru',
+    postalCode: '560038',
+    id: 'address-1',
+  );
+
+  final OrderRepository _orderRepository;
+  bool get liveOrders => _orderRepository is RemoteOrderRepository;
+  final CatalogRepository catalog;
+  bool _catalogLoading = false;
+  String? _catalogError;
+  bool get liveCatalog => catalog is RemoteCatalogRepository;
+  bool get catalogLoading => _catalogLoading;
+  String? get catalogError => _catalogError;
+
+  Future<void> refreshCatalog() async {
+    if (catalog is! RemoteCatalogRepository) return;
+    final remote = catalog as RemoteCatalogRepository;
+    _catalogLoading = true;
+    _catalogError = null;
+    notifyListeners();
+    try {
+      await remote.refresh();
+    } catch (_) {
+      _catalogError = remote.isLoaded
+          ? 'Could not refresh the live catalog. Showing the last loaded products.'
+          : 'Could not load the live catalog. Showing demo products.';
+    } finally {
+      _catalogLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<Product>> searchCatalog({
+    String query = '',
+    String? categoryId,
+    double? minPrice,
+    double? maxPrice,
+    ProductForm? form,
+    bool availableOnly = false,
+    CatalogSort sort = CatalogSort.recommended,
+  }) async {
+    try {
+      if (catalog is RemoteCatalogRepository) {
+        final remote = catalog as RemoteCatalogRepository;
+        return await remote.searchProducts(
+          query: query,
+          categoryId: categoryId,
+          minPrice: minPrice,
+          maxPrice: maxPrice,
+          form: form,
+          availableOnly: availableOnly,
+          sort: sort,
+        );
+      }
+      return catalog.browse(
+        query: query,
+        categoryId: categoryId,
+        minPrice: minPrice,
+        maxPrice: maxPrice,
+        form: form,
+        availableOnly: availableOnly,
+        sort: sort,
+      );
+    } on ApiFailure catch (error) {
+      throw _catalogFailure(error);
+    } catch (_) {
+      throw const CatalogLoadException('Could not load products. Try again.');
+    }
+  }
+
+  Future<Product?> loadCatalogProduct(String id) async {
+    try {
+      return catalog is RemoteCatalogRepository
+          ? await (catalog as RemoteCatalogRepository).loadById(id)
+          : catalog.getById(id);
+    } on ApiFailure catch (error) {
+      throw _catalogFailure(error);
+    } catch (_) {
+      throw const CatalogLoadException(
+        'Could not refresh this product. Try again.',
+      );
+    }
+  }
+
+  CatalogLoadException _catalogFailure(ApiFailure error) =>
+      switch (error.kind) {
+        ApiFailureKind.notFound => const CatalogLoadException(
+          'This product or category is no longer available.',
+          notFound: true,
+        ),
+        ApiFailureKind.validation => const CatalogLoadException(
+          'Check the search or filter and try again.',
+        ),
+        ApiFailureKind.authentication ||
+        ApiFailureKind.forbidden => const CatalogLoadException(
+          'Catalog access is unavailable. Try again.',
+        ),
+        ApiFailureKind.conflict => const CatalogLoadException(
+          'The catalog changed. Refresh and try again.',
+        ),
+        ApiFailureKind.network => const CatalogLoadException(
+          'Cannot reach the live catalog. Check the connection and retry.',
+        ),
+        ApiFailureKind.server => const CatalogLoadException(
+          'The catalog is temporarily unavailable. Try again shortly.',
+        ),
+        ApiFailureKind.unknown => const CatalogLoadException(
+          'Could not load products. Try again.',
+        ),
+      };
+  final AuthRepository auth;
+  CustomerSession? get currentSession => auth.currentSession;
+  Future<void> signIn(String phone, {String? code}) async {
+    await auth.login(phone, code: code);
+    notifyListeners();
+  }
+
+  Future<void> signInDemo(String phone) => signIn(phone);
+
+  Future<CustomerSession?> restoreSession() async {
+    final session = await auth.restoreSession();
+    notifyListeners();
+    return session;
+  }
+
+  Future<void> signOut() async {
+    await auth.logout();
+    if (liveOrders) _orderRepository.reset();
+    notifyListeners();
+  }
+
+  Future<void> signOutDemo() => signOut();
+
   final Map<(String, String?), BagLine> _bag = {};
   final Set<String> _savedIds = {};
+  final List<DeliveryAddress> _savedAddresses = [_initialAddress];
+  int _nextAddressNumber = 2;
   String _location = 'Indiranagar, Bengaluru';
+  DeliveryAddress _deliveryAddress = _initialAddress;
+  CheckoutContact _contact = const CheckoutContact(
+    name: 'Alex Rao',
+    phone: '9876543210',
+  );
+  PaymentMethod _paymentMethod = PaymentMethod.cashOnDelivery;
+  String? _couponCode;
+  String? _couponMessage;
 
   String get location => _location;
+  DeliveryAddress get deliveryAddress => _deliveryAddress;
+  List<DeliveryAddress> get savedAddresses =>
+      List.unmodifiable(_savedAddresses);
+  CheckoutContact get contact => _contact;
+  PaymentMethod get paymentMethod => _paymentMethod;
+  String? get couponCode => _couponCode;
+  String? get couponMessage => _couponMessage;
+  List<ProtoOrder> get orders => _orderRepository.orders;
+  ProtoOrder? orderById(String id) => _orderRepository.getById(id);
+  Future<List<ProtoOrder>> loadOrders() => _orderRepository.loadOrders();
+  Future<ProtoOrder?> loadOrder(String id) => _orderRepository.loadById(id);
   int get cartCount =>
       _bag.values.fold(0, (total, line) => total + line.quantity);
   List<BagLine> get bagLines => List.unmodifiable(_bag.values);
   Set<String> get savedProductIds => UnmodifiableSetView(_savedIds);
-  List<Product> get cartProducts => LocalCatalogRepository.products
-      .where((product) => quantityFor(product.id) > 0)
-      .toList(growable: false);
-  double get subtotal => cartProducts.fold(
-    0,
-    (total, product) => total + product.price * quantityFor(product.id),
+  List<Product> get cartProducts => List.unmodifiable(
+    {for (final line in _bag.values) line.product.id: line.product}.values,
   );
-  double get savings => cartProducts.fold(
+  double get subtotal => _bag.values.fold(
     0,
-    (total, product) =>
+    (total, line) => total + line.product.price * line.quantity,
+  );
+  double get savings => _bag.values.fold(
+    0,
+    (total, line) =>
         total +
-        (product.originalPrice - product.price) * quantityFor(product.id),
+        (line.product.originalPrice - line.product.price) * line.quantity,
   );
+  double get deliveryFee => DeliveryPricing.feeFor(subtotal);
+  double get couponDiscount => _couponCode == null
+      ? 0
+      : CouponPricing.evaluate(_couponCode!, subtotal).discount;
+  double get total {
+    final amount = subtotal + deliveryFee - couponDiscount;
+    return amount < 0 ? 0 : amount;
+  }
+
   int quantityFor(String id, {String? flavor}) => flavor != null
       ? _bag[(id, flavor)]?.quantity ?? 0
       : _bag.values
@@ -36,15 +219,31 @@ class AppController extends ChangeNotifier {
             .fold(0, (total, line) => total + line.quantity);
   bool isSaved(String id) => _savedIds.contains(id);
 
-  void add(Product product, {String? flavor}) {
+  void add(Product product, {String? flavor, int quantity = 1}) {
+    if (quantity <= 0)
+      throw ArgumentError.value(
+        quantity,
+        'quantity',
+        'Must be greater than zero.',
+      );
+    if (!product.isAvailable) {
+      throw StateError('${product.name} is temporarily unavailable.');
+    }
     final selectedFlavor =
         flavor ?? (product.flavors.isEmpty ? null : product.flavors.first);
+    if (selectedFlavor != null && !product.flavors.contains(selectedFlavor)) {
+      throw ArgumentError.value(
+        selectedFlavor,
+        'flavor',
+        'Choose an available flavor.',
+      );
+    }
     final key = (product.id, selectedFlavor);
-    final quantity = _bag[key]?.quantity ?? 0;
+    final currentQuantity = _bag[key]?.quantity ?? 0;
     _bag[key] = BagLine(
       product: product,
       flavor: selectedFlavor,
-      quantity: quantity + 1,
+      quantity: currentQuantity + quantity,
     );
     notifyListeners();
   }
@@ -75,6 +274,238 @@ class AppController extends ChangeNotifier {
 
   void setLocation(String location) {
     _location = location;
+    final parts = location.split(',');
+    final area = parts.first.trim();
+    _deliveryAddress = DeliveryAddress(
+      line1: _deliveryAddress.line1,
+      area: area,
+      city: parts.length > 1 ? parts.last.trim() : _deliveryAddress.city,
+      postalCode: switch (area) {
+        'Koramangala' => '560034',
+        'HSR Layout' => '560102',
+        'Indiranagar' => '560038',
+        _ => _deliveryAddress.postalCode,
+      },
+      label: _deliveryAddress.label,
+      id: _deliveryAddress.id,
+    );
+    _replaceSavedAddress(_deliveryAddress);
+    notifyListeners();
+  }
+
+  void _replaceSavedAddress(DeliveryAddress address) {
+    final index = _savedAddresses.indexWhere((saved) => saved.id == address.id);
+    if (index >= 0) _savedAddresses[index] = address;
+  }
+
+  void selectSavedAddress(String id) {
+    final index = _savedAddresses.indexWhere((address) => address.id == id);
+    if (index < 0) {
+      throw ArgumentError.value(id, 'id', 'Choose a saved address.');
+    }
+    final address = _savedAddresses[index];
+    _deliveryAddress = address;
+    _location = '${address.area}, ${address.city}';
+    notifyListeners();
+  }
+
+  /// Kept for existing callers that select the first address with a label.
+  void selectDeliveryAddress(String label) {
+    final index = _savedAddresses.indexWhere(
+      (address) => address.label == label,
+    );
+    if (index < 0) {
+      throw ArgumentError.value(label, 'label', 'Choose a saved address.');
+    }
+    selectSavedAddress(_savedAddresses[index].id);
+  }
+
+  void saveDeliveryAddress(DeliveryAddress address) {
+    final normalized = address.normalized;
+    if (!normalized.isValid ||
+        !const {'Home', 'Work', 'Other'}.contains(normalized.label)) {
+      throw ArgumentError.value(address, 'address', 'Enter a valid address.');
+    }
+    final DeliveryAddress saved;
+    if (normalized.id.isEmpty) {
+      saved = normalized.withId('address-${_nextAddressNumber++}');
+      _savedAddresses.add(saved);
+    } else {
+      final index = _savedAddresses.indexWhere(
+        (address) => address.id == normalized.id,
+      );
+      if (index < 0) {
+        throw ArgumentError.value(address, 'address', 'Unknown saved address.');
+      }
+      saved = normalized;
+      _savedAddresses[index] = saved;
+    }
+    _deliveryAddress = saved;
+    _location = '${saved.area}, ${saved.city}';
+    notifyListeners();
+  }
+
+  bool applyCoupon(String input) {
+    if (input.trim().isEmpty) {
+      _couponMessage = 'Enter a coupon code.';
+      notifyListeners();
+      return false;
+    }
+    final evaluation = CouponPricing.evaluate(input, subtotal);
+    if (!evaluation.isApplied) {
+      _couponMessage = evaluation.message;
+      notifyListeners();
+      return false;
+    }
+    _couponCode = evaluation.code;
+    _couponMessage = null;
+    notifyListeners();
+    return true;
+  }
+
+  void removeCoupon() {
+    if (_couponCode == null && _couponMessage == null) return;
+    _couponCode = null;
+    _couponMessage = null;
+    notifyListeners();
+  }
+
+  /// Removes a whole flavor variant rather than decrementing one unit.
+  void removeLine(Product product, {String? flavor}) {
+    final selectedFlavor =
+        flavor ?? (product.flavors.isEmpty ? null : product.flavors.first);
+    if (_bag.remove((product.id, selectedFlavor)) != null) notifyListeners();
+  }
+
+  ProtoOrder placeOrder({
+    required DeliveryAddress address,
+    required CheckoutContact contact,
+    required PaymentMethod paymentMethod,
+  }) {
+    final discount = couponDiscount;
+    final addressForOrder = _addressForOrder(address);
+    final order = _orderRepository.create(
+      items: _orderItems(),
+      address: addressForOrder,
+      contact: contact,
+      paymentMethod: paymentMethod,
+      deliveryFee: deliveryFee,
+      discount: discount,
+      promoCode: discount > 0 ? _couponCode : null,
+    );
+    _completeOrder(order, paymentMethod);
+    return order;
+  }
+
+  /// Checkout awaits this boundary so an eventual HTTP order repository can
+  /// fail without clearing the bag or changing the selected address.
+  Future<ProtoOrder> submitOrder({
+    required DeliveryAddress address,
+    required CheckoutContact contact,
+    required PaymentMethod paymentMethod,
+  }) async {
+    final discount = couponDiscount;
+    final items = _orderItems();
+    final destination = _addressForOrder(address);
+    final promoCode = discount > 0 ? _couponCode : null;
+    final repository = _orderRepository;
+    final order = repository is AsyncOrderRepository
+        ? await (repository as AsyncOrderRepository).createAsync(
+            items: items,
+            address: destination,
+            contact: contact,
+            paymentMethod: paymentMethod,
+            deliveryFee: deliveryFee,
+            discount: discount,
+            promoCode: promoCode,
+          )
+        : repository.create(
+            items: items,
+            address: destination,
+            contact: contact,
+            paymentMethod: paymentMethod,
+            deliveryFee: deliveryFee,
+            discount: discount,
+            promoCode: promoCode,
+          );
+    _completeOrder(
+      order,
+      paymentMethod,
+      selectedAddress: destination,
+      selectedContact: contact,
+    );
+    return order;
+  }
+
+  List<OrderItem> _orderItems() => bagLines
+      .map(
+        (line) => OrderItem(
+          product: line.product,
+          flavor: line.flavor,
+          quantity: line.quantity,
+          unitPrice: line.product.price,
+        ),
+      )
+      .toList();
+
+  DeliveryAddress _addressForOrder(DeliveryAddress address) {
+    final normalized = address.normalized;
+    if (normalized.id.isNotEmpty) return normalized;
+    final needsNewId = normalized.label != _deliveryAddress.label;
+    return normalized.withId(
+      needsNewId ? 'address-$_nextAddressNumber' : _deliveryAddress.id,
+    );
+  }
+
+  void _completeOrder(
+    ProtoOrder order,
+    PaymentMethod paymentMethod, {
+    DeliveryAddress? selectedAddress,
+    CheckoutContact? selectedContact,
+  }) {
+    final savedAddress = order.isLive
+        ? selectedAddress ?? order.address
+        : order.address;
+    final needsNewAddressId = savedAddress.id == 'address-$_nextAddressNumber';
+    if (needsNewAddressId) _nextAddressNumber++;
+    final savedIndex = _savedAddresses.indexWhere(
+      (address) => address.id == savedAddress.id,
+    );
+    if (savedIndex < 0) {
+      _savedAddresses.add(savedAddress);
+    } else {
+      _savedAddresses[savedIndex] = savedAddress;
+    }
+    _deliveryAddress = savedAddress;
+    _contact = order.isLive ? selectedContact ?? order.contact : order.contact;
+    _paymentMethod = paymentMethod;
+    _location = '${savedAddress.area}, ${savedAddress.city}';
+    _bag.clear();
+    _couponCode = null;
+    _couponMessage = null;
+    notifyListeners();
+  }
+
+  ProtoOrder? advanceOrderStatus(String id) {
+    final previous = orderById(id);
+    final updated = _orderRepository.advanceStatus(id);
+    if (updated != previous) notifyListeners();
+    return updated;
+  }
+
+  ProtoOrder? updateOrderStatus(String id, OrderStatus next) {
+    final previous = orderById(id);
+    final updated = _orderRepository.updateStatus(id, next);
+    if (updated != previous) notifyListeners();
+    return updated;
+  }
+
+  ProtoOrder? cancelOrder(String id) =>
+      updateOrderStatus(id, OrderStatus.cancelled);
+
+  void resetDemoOrders() {
+    if (_orderRepository.orders.isEmpty) return;
+    _orderRepository.reset();
     notifyListeners();
   }
 }

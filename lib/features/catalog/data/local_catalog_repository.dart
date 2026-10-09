@@ -1,6 +1,46 @@
 import 'package:flutter/material.dart';
 
 import '../domain/product.dart';
+import '../domain/catalog_repository.dart';
+export '../domain/catalog_repository.dart' show CatalogSort;
+
+/// Instance adapter for the existing static local catalog. Static entry points
+/// remain available to Day 1–6 callers and tests.
+class LocalCatalogSource implements CatalogRepository {
+  const LocalCatalogSource();
+
+  @override
+  List<ProductCategory> get categories => LocalCatalogRepository.categories;
+  @override
+  List<Product> get products => LocalCatalogRepository.products;
+  @override
+  List<Product> get featuredProducts => LocalCatalogRepository.featuredProducts;
+  @override
+  List<Product> get popularProducts => LocalCatalogRepository.popularProducts;
+  @override
+  Product? getById(String id) => LocalCatalogRepository.getById(id);
+  @override
+  List<Product> byCategory(String categoryId) =>
+      LocalCatalogRepository.byCategory(categoryId);
+  @override
+  List<Product> browse({
+    String query = '',
+    String? categoryId,
+    double? minPrice,
+    double? maxPrice,
+    ProductForm? form,
+    bool availableOnly = false,
+    CatalogSort sort = CatalogSort.recommended,
+  }) => LocalCatalogRepository.browse(
+    query: query,
+    categoryId: categoryId,
+    minPrice: minPrice,
+    maxPrice: maxPrice,
+    form: form,
+    availableOnly: availableOnly,
+    sort: sort,
+  );
+}
 
 /// A local, deterministic catalog for the customer experience.
 ///
@@ -146,6 +186,7 @@ class LocalCatalogRepository {
     Product(
       id: 'protein-bites',
       name: 'Peanut Butter Bites',
+      isAvailable: false,
       brand: 'PROTO KITCHEN',
       categoryId: 'snacks',
       price: 299,
@@ -337,27 +378,76 @@ class LocalCatalogRepository {
     return null;
   }
 
+  static List<Product> get popularProducts =>
+      List<Product>.unmodifiable(browse(sort: CatalogSort.popular).take(4));
+
   static List<Product> byCategory(String categoryId) {
     if (categoryId == 'all' || categoryId.isEmpty) return products;
-    return List<Product>.unmodifiable(
-      products.where((product) => product.categoryId == categoryId),
-    );
+    return browse(categoryId: categoryId);
   }
 
-  static List<Product> search(String query) {
+  static List<Product> search(String query) => browse(query: query);
+
+  /// Combines local discovery choices without changing the source catalog.
+  /// Price bounds are inclusive. A null bound or type leaves it unrestricted.
+  static List<Product> browse({
+    String query = '',
+    String? categoryId,
+    double? minPrice,
+    double? maxPrice,
+    ProductForm? form,
+    bool availableOnly = false,
+    CatalogSort sort = CatalogSort.recommended,
+  }) {
     final terms = query.toLowerCase().trim().split(RegExp(r'\s+'));
-    if (query.trim().isEmpty) return products;
-    return List<Product>.unmodifiable(
-      products.where((product) {
-        final text = [
-          product.name,
-          product.brand,
-          product.subtitle,
-          product.categoryId,
-          ...product.flavors,
-        ].join(' ').toLowerCase();
-        return terms.every(text.contains);
-      }),
-    );
+    final hasQuery = query.trim().isNotEmpty;
+    final matches = products.where((product) {
+      if (availableOnly && !product.isAvailable) return false;
+      if (categoryId != null &&
+          categoryId != 'all' &&
+          categoryId.isNotEmpty &&
+          product.categoryId != categoryId) {
+        return false;
+      }
+      if (minPrice != null && product.price < minPrice) return false;
+      if (maxPrice != null && product.price > maxPrice) return false;
+      if (form != null && product.form != form) return false;
+      if (!hasQuery) return true;
+
+      final categoryTitle = categories
+          .where((category) => category.id == product.categoryId)
+          .map((category) => category.title)
+          .firstOrNull;
+      final searchable = [
+        product.name,
+        product.brand,
+        product.subtitle,
+        product.categoryId,
+        if (categoryTitle != null) categoryTitle,
+        ...product.flavors,
+      ].join(' ').toLowerCase();
+      return terms.every(searchable.contains);
+    }).toList();
+
+    switch (sort) {
+      case CatalogSort.recommended:
+        break;
+      case CatalogSort.priceLow:
+        matches.sort((a, b) => a.price.compareTo(b.price));
+        break;
+      case CatalogSort.priceHigh:
+        matches.sort((a, b) => b.price.compareTo(a.price));
+        break;
+      case CatalogSort.name:
+        matches.sort((a, b) => a.name.compareTo(b.name));
+        break;
+      case CatalogSort.popular:
+        matches.sort((a, b) => b.reviewCount.compareTo(a.reviewCount));
+        break;
+      case CatalogSort.topRated:
+        matches.sort((a, b) => b.rating.compareTo(a.rating));
+        break;
+    }
+    return List<Product>.unmodifiable(matches);
   }
 }

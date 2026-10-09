@@ -9,11 +9,13 @@ class ProtoButton extends StatelessWidget {
     required this.onPressed,
     this.icon,
     this.outlined = false,
+    this.loading = false,
   });
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
   final bool outlined;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -22,12 +24,25 @@ class ProtoButton extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Flexible(child: Text(label, textAlign: TextAlign.center)),
-        if (icon != null) ...[const SizedBox(width: 10), Icon(icon, size: 19)],
+        if (loading) ...[
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: outlined ? ProtoColors.lime : ProtoColors.background,
+            ),
+          ),
+        ] else if (icon != null) ...[
+          const SizedBox(width: 10),
+          Icon(icon, size: 19),
+        ],
       ],
     );
     if (outlined) {
       return OutlinedButton(
-        onPressed: onPressed,
+        onPressed: loading ? null : onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: ProtoColors.text,
           minimumSize: const Size(0, 54),
@@ -43,6 +58,15 @@ class ProtoButton extends StatelessWidget {
         child: child,
       );
     }
-    return FilledButton(onPressed: onPressed, child: child);
+    return FilledButton(
+      onPressed: loading ? null : onPressed,
+      style: loading
+          ? FilledButton.styleFrom(
+              disabledBackgroundColor: ProtoColors.lime,
+              disabledForegroundColor: ProtoColors.background,
+            )
+          : null,
+      child: child,
+    );
   }
 }

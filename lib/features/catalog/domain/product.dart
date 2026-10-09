@@ -22,6 +22,8 @@ class Product {
     required this.accentColor,
     required this.form,
     required this.flavors,
+    this.isAvailable = true,
+    this.imageUrl,
   });
 
   final String id;
@@ -41,6 +43,32 @@ class Product {
   final Color accentColor;
   final ProductForm form;
   final List<String> flavors;
+  final String? imageUrl;
+
+  /// Local catalog availability until live inventory is connected.
+  final bool isAvailable;
+
+  Product withAvailability(bool available) => Product(
+    id: id,
+    name: name,
+    brand: brand,
+    categoryId: categoryId,
+    price: price,
+    originalPrice: originalPrice,
+    weightLabel: weightLabel,
+    subtitle: subtitle,
+    description: description,
+    proteinGrams: proteinGrams,
+    servings: servings,
+    rating: rating,
+    reviewCount: reviewCount,
+    badge: badge,
+    accentColor: accentColor,
+    form: form,
+    flavors: flavors,
+    isAvailable: available,
+    imageUrl: imageUrl,
+  );
 
   int get discountPercent => originalPrice > price && originalPrice > 0
       ? ((originalPrice - price) / originalPrice * 100).round()

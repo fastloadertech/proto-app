@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/state/app_controller.dart';
 import '../../../core/theme/proto_theme.dart';
-import '../data/local_catalog_repository.dart';
 import '../domain/product.dart';
 import 'product_listing_screen.dart';
 
@@ -118,7 +118,7 @@ class CategoriesScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '${LocalCatalogRepository.categories.length} categories',
+                              '${AppScope.of(context).catalog.categories.length} categories',
                               style: const TextStyle(
                                 color: ProtoColors.muted,
                                 fontSize: 11,
@@ -137,7 +137,7 @@ class CategoriesScreen extends StatelessWidget {
                 horizontal: (constraints.maxWidth - contentWidth) / 2 + 24,
               ),
               sliver: SliverGrid.builder(
-                itemCount: LocalCatalogRepository.categories.length,
+                itemCount: AppScope.of(context).catalog.categories.length,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
                   crossAxisSpacing: 12,
@@ -145,8 +145,10 @@ class CategoriesScreen extends StatelessWidget {
                   mainAxisExtent: 194,
                 ),
                 itemBuilder: (context, index) {
-                  final category = LocalCatalogRepository.categories[index];
-                  final count = LocalCatalogRepository.products
+                  final category = AppScope.of(
+                    context,
+                  ).catalog.categories[index];
+                  final count = AppScope.of(context).catalog.products
                       .where((product) => product.categoryId == category.id)
                       .length;
                   return _CategoryTile(

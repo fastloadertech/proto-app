@@ -5,7 +5,6 @@ import '../../../core/widgets/product_artwork.dart';
 import '../../../core/widgets/product_card.dart';
 import '../../../core/widgets/proto_brand.dart';
 import '../../../core/widgets/section_heading.dart';
-import '../../catalog/data/local_catalog_repository.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/product_detail_screen.dart';
 import '../../catalog/presentation/product_listing_screen.dart';
@@ -31,6 +30,35 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final categories = app.catalog.categories;
+    final proteinCategory =
+        categories
+            .where(
+              (category) =>
+                  category.id == 'protein' ||
+                  category.title.toLowerCase().contains('whey'),
+            )
+            .firstOrNull ??
+        categories
+            .where(
+              (category) => category.title.toLowerCase().contains('protein'),
+            )
+            .firstOrNull ??
+        categories.firstOrNull;
+    final proteinProduct = proteinCategory == null
+        ? app.catalog.products.firstOrNull
+        : app.catalog.byCategory(proteinCategory.id).firstOrNull ??
+              app.catalog.products.firstOrNull;
+    final hydrationCategory = categories
+        .where(
+          (category) =>
+              category.id == 'hydration' ||
+              category.title.toLowerCase().contains('hydration'),
+        )
+        .firstOrNull;
+    final hydrationProduct = hydrationCategory == null
+        ? null
+        : app.catalog.byCategory(hydrationCategory.id).firstOrNull;
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 850;
@@ -187,7 +215,66 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 31),
+                    const SizedBox(height: 13),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 11,
+                      ),
+                      decoration: BoxDecoration(
+                        color: ProtoColors.lime.withValues(alpha: .055),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(
+                          color: ProtoColors.lime.withValues(alpha: .16),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.bolt_rounded,
+                            color: ProtoColors.lime,
+                            size: 17,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              app.liveCatalog
+                                  ? 'LIVE CATALOG · Orders and delivery are simulated'
+                                  : 'LOCAL DEMO · Orders and delivery are simulated',
+                              style: const TextStyle(
+                                color: ProtoColors.muted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (app.liveCatalog && app.catalogLoading) ...[
+                      const SizedBox(height: 10),
+                      const LinearProgressIndicator(minHeight: 2),
+                    ],
+                    if (app.catalogError != null) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        children: [
+                          Text(
+                            app.catalogError!,
+                            style: const TextStyle(color: ProtoColors.muted),
+                          ),
+                          TextButton(
+                            onPressed: app.refreshCatalog,
+                            child: const Text('Retry catalog'),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 27),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -230,28 +317,46 @@ class HomeScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 23),
-                    if (wide)
+                    if (proteinProduct != null &&
+                        wide &&
+                        hydrationProduct != null)
                       Row(
                         children: [
                           Expanded(
                             flex: 2,
                             child: _FuelHero(
-                              onTap: () =>
-                                  _browse(context, category: 'protein'),
+                              product: proteinProduct,
+                              onTap: () => _browse(
+                                context,
+                                category: proteinCategory?.id,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 18),
                           Expanded(
                             child: _HydrationHero(
-                              onTap: () =>
-                                  _browse(context, category: 'hydration'),
+                              product: hydrationProduct,
+                              onTap: () => _browse(
+                                context,
+                                category: hydrationCategory?.id,
+                              ),
                             ),
                           ),
                         ],
                       )
-                    else
+                    else if (proteinProduct != null)
                       _FuelHero(
-                        onTap: () => _browse(context, category: 'protein'),
+                        product: proteinProduct,
+                        onTap: () =>
+                            _browse(context, category: proteinCategory?.id),
+                      ),
+                    if (app.catalog.products.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          'No products are available right now. Try again later.',
+                          style: TextStyle(color: ProtoColors.muted),
+                        ),
                       ),
                     const SizedBox(height: 13),
                     const _TrustStrip(),
@@ -261,75 +366,61 @@ class HomeScreen extends StatelessWidget {
                       actionLabel: 'View all',
                       onAction: onBrowseCategories,
                     ),
-                    SizedBox(
-                      height: 125,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: LocalCatalogRepository.categories.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 13),
-                        itemBuilder: (context, index) {
-                          final category =
-                              LocalCatalogRepository.categories[index];
-                          final product = LocalCatalogRepository.byCategory(
-                            category.id,
-                          ).first;
-                          return _CategoryShortcut(
-                            category: category,
-                            product: product,
-                            onTap: () =>
-                                _browse(context, category: category.id),
-                          );
-                        },
+                    if (categories.isNotEmpty)
+                      SizedBox(
+                        height: 125,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: app.catalog.categories.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 13),
+                          itemBuilder: (context, index) {
+                            final category = app.catalog.categories[index];
+                            final product = app.catalog
+                                .byCategory(category.id)
+                                .firstOrNull;
+                            return _CategoryShortcut(
+                              category: category,
+                              product: product,
+                              onTap: () =>
+                                  _browse(context, category: category.id),
+                            );
+                          },
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 30),
-                    SectionHeading(
-                      title: 'Your daily essentials',
-                      subtitle: 'The good stuff. Ready when you are.',
-                      actionLabel: 'Shop all',
-                      onAction: () => _browse(context),
-                    ),
+                    if (app.catalog.products.isNotEmpty)
+                      SectionHeading(
+                        title: 'Featured products',
+                        subtitle: 'The good stuff. Ready when you are.',
+                        actionLabel: 'Shop all',
+                        onAction: () => _browse(context),
+                      ),
                   ],
                 ),
               ),
             ),
-            SliverPadding(
-              padding: EdgeInsets.symmetric(horizontal: padding),
-              sliver: SliverLayoutBuilder(
-                builder: (context, constraints) {
-                  final columns = constraints.crossAxisExtent >= 900
-                      ? 4
-                      : constraints.crossAxisExtent >= 600
-                      ? 3
-                      : 2;
-                  final cardWidth =
-                      (constraints.crossAxisExtent - (columns - 1) * 14) /
-                      columns;
-                  return SliverGrid.builder(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 16,
-                      mainAxisExtent: cardWidth / 1.06 + 168,
-                    ),
-                    itemCount: LocalCatalogRepository.featuredProducts.length,
-                    itemBuilder: (context, index) {
-                      final product =
-                          LocalCatalogRepository.featuredProducts[index];
-                      return ProductCard(
-                        product: product,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                ProductDetailScreen(product: product),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
+            if (app.catalog.products.isNotEmpty)
+              SliverPadding(
+                padding: EdgeInsets.symmetric(horizontal: padding),
+                sliver: _ProductGrid(products: app.catalog.featuredProducts),
               ),
-            ),
+            if (app.catalog.products.isNotEmpty)
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(padding, 30, padding, 0),
+                sliver: SliverToBoxAdapter(
+                  child: SectionHeading(
+                    title: 'Popular right now',
+                    subtitle: 'Community favorites for a stronger routine.',
+                    actionLabel: 'Explore',
+                    onAction: () => _browse(context),
+                  ),
+                ),
+              ),
+            if (app.catalog.products.isNotEmpty)
+              SliverPadding(
+                padding: EdgeInsets.symmetric(horizontal: padding),
+                sliver: _ProductGrid(products: app.catalog.popularProducts),
+              ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(padding, 30, padding, 32),
               sliver: SliverToBoxAdapter(
@@ -390,7 +481,7 @@ class HomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'We’ll bring the fuel.   •   Proto Day 1 / Local demo',
+                      'We’ll bring the fuel.   •   Proto Day 2 / Local demo',
                       style: TextStyle(color: ProtoColors.muted, fontSize: 10),
                     ),
                   ],
@@ -457,18 +548,61 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+class _ProductGrid extends StatelessWidget {
+  const _ProductGrid({required this.products});
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) => SliverLayoutBuilder(
+    builder: (context, constraints) {
+      final columns = constraints.crossAxisExtent >= 900
+          ? 4
+          : constraints.crossAxisExtent >= 600
+          ? 3
+          : 2;
+      final cardWidth =
+          (constraints.crossAxisExtent - (columns - 1) * 14) / columns;
+      return SliverGrid.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 16,
+          mainAxisExtent: ProductCard.gridExtent(context, cardWidth),
+        ),
+        itemCount: products.length,
+        itemBuilder: (context, index) => ProductCard(
+          product: products[index],
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ProductDetailScreen(product: products[index]),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _FuelHero extends StatelessWidget {
-  const _FuelHero({required this.onTap});
+  const _FuelHero({required this.onTap, required this.product});
   final VoidCallback onTap;
+  final Product product;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final compact = constraints.maxWidth < 450;
       final narrow = constraints.maxWidth < 330;
+      final titleSize = narrow
+          ? 28.0
+          : compact
+          ? 31.0
+          : 40.0;
+      final scaledTitleSize = MediaQuery.textScalerOf(context).scale(titleSize);
+      final textHeight = (scaledTitleSize - titleSize).clamp(0.0, 100.0) * 2.5;
       return ClipRRect(
         borderRadius: BorderRadius.circular(19),
         child: SizedBox(
-          height: compact ? 238 : 263,
+          height: (compact ? 238.0 : 263.0) + textHeight,
           child: Stack(
             children: [
               const Positioned.fill(child: ColoredBox(color: ProtoColors.lime)),
@@ -507,10 +641,7 @@ class _FuelHero extends StatelessWidget {
                         : compact
                         ? 212
                         : 275,
-                    child: ProductArtwork(
-                      product: LocalCatalogRepository.products.first,
-                      showGlow: false,
-                    ),
+                    child: ProductArtwork(product: product, showGlow: false),
                   ),
                 ),
               ),
@@ -535,11 +666,7 @@ class _FuelHero extends StatelessWidget {
                       'Good fuel.\nGreat form.',
                       style: TextStyle(
                         color: ProtoColors.background,
-                        fontSize: narrow
-                            ? 28
-                            : compact
-                            ? 31
-                            : 40,
+                        fontSize: titleSize,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -1.8,
                         height: 1.03,
@@ -595,8 +722,9 @@ class _FuelHero extends StatelessWidget {
 }
 
 class _HydrationHero extends StatelessWidget {
-  const _HydrationHero({required this.onTap});
+  const _HydrationHero({required this.onTap, required this.product});
   final VoidCallback onTap;
+  final Product product;
   @override
   Widget build(BuildContext context) => Material(
     color: const Color(0xFFDFE5DE),
@@ -616,12 +744,7 @@ class _HydrationHero extends StatelessWidget {
                 child: SizedBox(
                   width: 191,
                   height: 232,
-                  child: ProductArtwork(
-                    product: LocalCatalogRepository.byCategory(
-                      'hydration',
-                    ).first,
-                    showGlow: false,
-                  ),
+                  child: ProductArtwork(product: product, showGlow: false),
                 ),
               ),
             ),
@@ -681,7 +804,7 @@ class _CategoryShortcut extends StatelessWidget {
     required this.onTap,
   });
   final ProductCategory category;
-  final Product product;
+  final Product? product;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -703,7 +826,9 @@ class _CategoryShortcut extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.all(7),
-              child: ProductArtwork(product: product, showGlow: false),
+              child: product == null
+                  ? Icon(category.icon, color: category.accentColor, size: 37)
+                  : ProductArtwork(product: product!, showGlow: false),
             ),
           ),
           const SizedBox(height: 10),

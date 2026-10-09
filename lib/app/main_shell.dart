@@ -9,7 +9,8 @@ import '../features/home/presentation/home_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  const MainShell({super.key, this.liveAuth = false});
+  final bool liveAuth;
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -21,6 +22,9 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final cartCount = AppScope.of(context).cartCount;
+    final extraLabelHeight = MediaQuery.textScalerOf(context).scale(10) - 10;
+    final navHeight =
+        75.0 + (extraLabelHeight > 0 ? extraLabelHeight * 2 : 0.0);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -40,10 +44,18 @@ class _MainShellState extends State<MainShell> {
                   onBrowse: () => _select(0),
                   onSignIn: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (context) =>
-                          LoginScreen(onContinue: () => Navigator.pop(context)),
+                      builder: (context) => LoginScreen(
+                        liveAuth: widget.liveAuth,
+                        onDemoSignIn: AppScope.of(context).signInDemo,
+                        onApiSignIn: (phone, code) =>
+                            AppScope.of(context).signIn(phone, code: code),
+                        onContinue: () => Navigator.pop(context),
+                      ),
                     ),
                   ),
+                  onLogout: () => Navigator.of(
+                    context,
+                  ).pushNamedAndRemoveUntil('/login', (_) => false),
                 ),
               ],
             ),
@@ -62,7 +74,7 @@ class _MainShellState extends State<MainShell> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
               child: SizedBox(
-                height: 75,
+                height: navHeight,
                 child: Row(
                   children: [
                     _NavItem(

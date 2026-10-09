@@ -74,8 +74,45 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bag'));
     await capture('bag');
+    await tester.ensureVisible(find.text('Checkout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Checkout'));
+    await capture('checkout');
+    await tester.ensureVisible(find.text('UPI demo'));
+    await capture('checkout-payment');
     tester.view.physicalSize = const Size(1440, 900);
-    await tester.tap(find.text('Shop'));
+    await tester.pumpAndSettle();
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .jumpTo(0);
+    await capture('checkout-desktop');
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Place order'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Place order'));
+    await capture('confirmation');
+    await tester.ensureVisible(find.text('Track order'));
+    await capture('confirmation-summary');
+    await tester.tap(find.text('Track order'));
+    await capture('order-status');
+    await tester.ensureVisible(find.text('Advance demo status'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Advance demo status'));
+    await capture('order-preparing');
+    await tester.ensureVisible(find.text('Continue shopping'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue shopping'));
+    tester.view.physicalSize = const Size(1440, 900);
     await capture('home-desktop');
+    final homeScroll = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Popular right now'),
+      400,
+      scrollable: homeScroll,
+    );
+    await capture('home-discovery-desktop');
+    expect(tester.takeException(), isNull);
   });
 }

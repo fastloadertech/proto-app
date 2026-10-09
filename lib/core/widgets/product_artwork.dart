@@ -182,7 +182,7 @@ class _ProductPackagingPainter extends CustomPainter {
     );
     _text(
       canvas,
-      product.flavors.first.toUpperCase(),
+      (product.flavors.firstOrNull ?? product.brand).toUpperCase(),
       const Offset(72, 191),
       fontSize: 6.8,
       color: _muted,
@@ -351,7 +351,7 @@ class _ProductPackagingPainter extends CustomPainter {
     );
     _text(
       canvas,
-      product.flavors.first.toUpperCase(),
+      (product.flavors.firstOrNull ?? product.brand).toUpperCase(),
       const Offset(77, 186),
       fontSize: 6.2,
       color: _ink.withValues(alpha: 0.8),

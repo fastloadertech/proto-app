@@ -22,9 +22,6 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final cartCount = AppScope.of(context).cartCount;
-    final extraLabelHeight = MediaQuery.textScalerOf(context).scale(10) - 10;
-    final navHeight =
-        75.0 + (extraLabelHeight > 0 ? extraLabelHeight * 2 : 0.0);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -62,59 +59,79 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
       ),
-      bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(
-          color: ProtoColors.background,
-          border: Border(top: BorderSide(color: ProtoColors.border)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Center(
-            heightFactor: 1,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: SizedBox(
-                height: navHeight,
-                child: Row(
-                  children: [
-                    _NavItem(
-                      label: 'Shop',
-                      icon: Icons.home_outlined,
-                      selectedIcon: Icons.home_rounded,
-                      selected: _index == 0,
-                      onTap: () => _select(0),
-                    ),
-                    _NavItem(
-                      label: 'Categories',
-                      icon: Icons.grid_view_outlined,
-                      selectedIcon: Icons.grid_view_rounded,
-                      selected: _index == 1,
-                      onTap: () => _select(1),
-                    ),
-                    _NavItem(
-                      label: 'Bag',
-                      icon: Icons.shopping_bag_outlined,
-                      selectedIcon: Icons.shopping_bag_rounded,
-                      selected: _index == 2,
-                      onTap: () => _select(2),
-                      count: cartCount,
-                    ),
-                    _NavItem(
-                      label: 'You',
-                      icon: Icons.person_outline_rounded,
-                      selectedIcon: Icons.person_rounded,
-                      selected: _index == 3,
-                      onTap: () => _select(3),
-                    ),
-                  ],
+      bottomNavigationBar: MainShellNavigationBar(
+        selectedIndex: _index,
+        cartCount: cartCount,
+        onSelect: _select,
+      ),
+    );
+  }
+}
+
+class MainShellNavigationBar extends StatelessWidget {
+  const MainShellNavigationBar({
+    super.key,
+    required this.selectedIndex,
+    required this.cartCount,
+    required this.onSelect,
+  });
+
+  final int selectedIndex;
+  final int cartCount;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      color: ProtoColors.background,
+      border: Border(top: BorderSide(color: ProtoColors.border)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _NavItem(
+                  label: 'Shop',
+                  icon: Icons.home_outlined,
+                  selectedIcon: Icons.home_rounded,
+                  selected: selectedIndex == 0,
+                  onTap: () => onSelect(0),
                 ),
-              ),
+                _NavItem(
+                  label: 'Categories',
+                  icon: Icons.grid_view_outlined,
+                  selectedIcon: Icons.grid_view_rounded,
+                  selected: selectedIndex == 1,
+                  onTap: () => onSelect(1),
+                ),
+                _NavItem(
+                  label: 'Bag',
+                  icon: Icons.shopping_bag_outlined,
+                  selectedIcon: Icons.shopping_bag_rounded,
+                  selected: selectedIndex == 2,
+                  onTap: () => onSelect(2),
+                  count: cartCount,
+                ),
+                _NavItem(
+                  label: 'You',
+                  icon: Icons.person_outline_rounded,
+                  selectedIcon: Icons.person_rounded,
+                  selected: selectedIndex == 3,
+                  onTap: () => onSelect(3),
+                ),
+              ],
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _NavItem extends StatelessWidget {
@@ -139,62 +156,66 @@ class _NavItem extends StatelessWidget {
       label: label,
       child: InkWell(
         onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 19,
-                    vertical: 5,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 19,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? ProtoColors.lime.withValues(alpha: .1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      selected ? selectedIcon : icon,
+                      color: selected ? ProtoColors.lime : ProtoColors.muted,
+                      size: 23,
+                    ),
                   ),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? ProtoColors.lime.withValues(alpha: .1)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    selected ? selectedIcon : icon,
-                    color: selected ? ProtoColors.lime : ProtoColors.muted,
-                    size: 23,
-                  ),
-                ),
-                if (count > 0)
-                  Positioned(
-                    right: 9,
-                    top: -3,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: ProtoColors.lime,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        count > 99 ? '99+' : '$count',
-                        style: const TextStyle(
-                          color: ProtoColors.background,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
+                  if (count > 0)
+                    Positioned(
+                      right: 9,
+                      top: -3,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: ProtoColors.lime,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          count > 99 ? '99+' : '$count',
+                          style: const TextStyle(
+                            color: ProtoColors.background,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? ProtoColors.lime : ProtoColors.muted,
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? ProtoColors.lime : ProtoColors.muted,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     ),

@@ -77,7 +77,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _placeOrder() async {
     if (_placingOrder) return;
     final app = AppScope.of(context);
-    if (app.cartCount == 0) return;
+    if (app.cartCount == 0 ||
+        app.orderSubmissionInProgress ||
+        app.orderSubmissionUncertain)
+      return;
     if (!_formKey.currentState!.validate()) {
       setState(() => _error = 'Check the highlighted details to continue.');
       final formContext = _formKey.currentContext;
@@ -158,7 +161,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (mounted) {
         setState(() {
           _placingOrder = false;
-          _error = 'Could not place the order. Your bag is safe. Try again.';
+          _error = app.orderSubmissionUncertain
+              ? 'We could not confirm whether your order was placed. Your bag is safe. Review your orders before taking further action.'
+              : 'Could not place the order. Your bag is safe. Try again.';
         });
       }
     }
@@ -173,10 +178,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ApiFailureKind.conflict =>
       'A product or quantity is unavailable. Review your bag and try again.',
     ApiFailureKind.network =>
-      'Connection lost. Check your orders before retrying; your bag is safe.',
+      'Connection lost. We could not confirm whether your order was placed. Your bag is safe; review your orders.',
     ApiFailureKind.forbidden => 'This account cannot place orders.',
     ApiFailureKind.server || ApiFailureKind.unknown =>
-      'Order service is unavailable. Your bag is safe; try again.',
+      'We could not confirm whether your order was placed. Your bag is safe; review your orders.',
   };
 
   Future<void> _chooseAddress() async {
@@ -572,7 +577,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       ],
       const SizedBox(height: 20),
-      if (_error != null) ...[
+      if (_error != null || app.orderSubmissionUncertain) ...[
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -580,7 +585,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
-            _error!,
+            _error ??
+                'The previous order may have been placed. Your bag is safe. Review your orders before taking further action.',
             style: const TextStyle(
               color: Color(0xFFF3B8A7),
               fontSize: 12,
@@ -590,16 +596,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
         const SizedBox(height: 16),
       ],
+      if (app.orderSubmissionUncertain) ...[
+        ProtoButton(
+          label: 'Review your orders',
+          outlined: true,
+          icon: Icons.receipt_long_outlined,
+          onPressed: () => Navigator.of(context).pushNamed('/orders'),
+        ),
+        const SizedBox(height: 12),
+      ],
       ProtoButton(
         label: _placingOrder ? 'Placing order…' : 'Place order',
         loading: _placingOrder,
         icon: _placingOrder ? null : Icons.arrow_forward_rounded,
-        onPressed: _placingOrder || app.cartCount == 0 ? null : _placeOrder,
+        onPressed:
+            _placingOrder ||
+                app.orderSubmissionInProgress ||
+                app.orderSubmissionUncertain ||
+                app.cartCount == 0
+            ? null
+            : _placeOrder,
       ),
       const SizedBox(height: 12),
       Text(
         app.liveOrders
-            ? 'Stored in the shared backend. No payment or delivery dispatch yet.'
+            ? 'Stored in the shared backend. No payment is processed here. Delivery status appears in order details when available.'
             : 'Local demo order · No real delivery will be made.',
         textAlign: TextAlign.center,
         style: const TextStyle(

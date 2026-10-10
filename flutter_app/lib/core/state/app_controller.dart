@@ -34,6 +34,10 @@ class AppController extends ChangeNotifier {
 
   final OrderRepository _orderRepository;
   bool get liveOrders => _orderRepository is RemoteOrderRepository;
+  bool _orderSubmissionInProgress = false;
+  bool _orderSubmissionUncertain = false;
+  bool get orderSubmissionInProgress => _orderSubmissionInProgress;
+  bool get orderSubmissionUncertain => _orderSubmissionUncertain;
   bool get liveDeliveryStatus =>
       _orderRepository is LiveDeliveryStatusRepository &&
       (_orderRepository as LiveDeliveryStatusRepository).deliveryStatusEnabled;
@@ -407,37 +411,75 @@ class AppController extends ChangeNotifier {
     required CheckoutContact contact,
     required PaymentMethod paymentMethod,
   }) async {
-    final discount = couponDiscount;
-    final items = _orderItems();
-    final destination = _addressForOrder(address);
-    final promoCode = discount > 0 ? _couponCode : null;
-    final repository = _orderRepository;
-    final order = repository is AsyncOrderRepository
-        ? await (repository as AsyncOrderRepository).createAsync(
-            items: items,
-            address: destination,
-            contact: contact,
-            paymentMethod: paymentMethod,
-            deliveryFee: deliveryFee,
-            discount: discount,
-            promoCode: promoCode,
-          )
-        : repository.create(
-            items: items,
-            address: destination,
-            contact: contact,
-            paymentMethod: paymentMethod,
-            deliveryFee: deliveryFee,
-            discount: discount,
-            promoCode: promoCode,
-          );
-    _completeOrder(
-      order,
-      paymentMethod,
-      selectedAddress: destination,
-      selectedContact: contact,
-    );
-    return order;
+    if (_orderSubmissionInProgress) {
+      throw StateError('An order is already being placed.');
+    }
+    if (_orderSubmissionUncertain) {
+      throw StateError(
+        'The previous order may have been placed. Review your orders before placing another order.',
+      );
+    }
+    if (_bag.isEmpty) {
+      throw StateError('Add products to your bag before placing an order.');
+    }
+    _orderSubmissionInProgress = true;
+    notifyListeners();
+    try {
+      final discount = couponDiscount;
+      final items = _orderItems();
+      final destination = _addressForOrder(address);
+      final promoCode = discount > 0 ? _couponCode : null;
+      final repository = _orderRepository;
+      final order = repository is AsyncOrderRepository
+          ? await (repository as AsyncOrderRepository).createAsync(
+              items: items,
+              address: destination,
+              contact: contact,
+              paymentMethod: paymentMethod,
+              deliveryFee: deliveryFee,
+              discount: discount,
+              promoCode: promoCode,
+            )
+          : repository.create(
+              items: items,
+              address: destination,
+              contact: contact,
+              paymentMethod: paymentMethod,
+              deliveryFee: deliveryFee,
+              discount: discount,
+              promoCode: promoCode,
+            );
+      _completeOrder(
+        order,
+        paymentMethod,
+        selectedAddress: destination,
+        selectedContact: contact,
+      );
+      return order;
+    } on ApiFailure catch (failure) {
+      // A timeout, server error, or malformed success response can happen
+      // after the backend has committed the order. This API has no
+      // idempotency key, so a second POST cannot be made safely here.
+      if (liveOrders &&
+          {
+            ApiFailureKind.network,
+            ApiFailureKind.server,
+            ApiFailureKind.unknown,
+          }.contains(failure.kind)) {
+        _orderSubmissionUncertain = true;
+        notifyListeners();
+      }
+      rethrow;
+    } catch (_) {
+      if (liveOrders) {
+        _orderSubmissionUncertain = true;
+        notifyListeners();
+      }
+      rethrow;
+    } finally {
+      _orderSubmissionInProgress = false;
+      notifyListeners();
+    }
   }
 
   List<OrderItem> _orderItems() => bagLines

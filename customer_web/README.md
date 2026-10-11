@@ -40,11 +40,13 @@ npm test
 npm run build
 ```
 
-## Day 1 storefront scope
+## Storefront scope and local state
 
-The home, categories, and product listing screens follow the Flutter app's colors, Inter font, navigation, and product artwork. Search, category filtering, availability filtering, sorting, product details, favorites, and a local in-memory bag work in the browser. The three sample delivery locations only change the displayed location.
+The home, categories, and product listing screens follow the Flutter app's colors, Inter font, navigation, and product artwork. Search, category filtering, availability filtering, sorting, product details, favorites, and a local bag work in the browser. The three sample delivery locations only change the displayed location.
 
-Only the catalog endpoints above are connected in optional live mode. Both modes keep favorites and bag quantities in the current page session; no account, checkout, order placement, payment, or delivery tracking is connected on web. The You screen says so directly. The 12 MIN badge and sample locations reproduce the Flutter design and are illustrative, not live delivery estimates. Live catalog products use their API image URL; those without one use a branded placeholder. The app does not silently substitute demo products for a failed live request.
+Bag quantities and favourites are saved in this browser's `localStorage` under the versioned keys `proto:web:bag:v1` and `proto:web:favourites:v1`. Invalid stored entries and IDs absent from the loaded catalog are ignored. If browser storage is unavailable, they still work until the page is refreshed. Totals are recalculated from the current catalog; neither bag nor favourites are synced to a server.
+
+Only the catalog endpoints above are connected in optional live mode. No account, checkout, order placement, payment, or delivery tracking is connected on web. The You screen says so directly. The 12 MIN badge and sample locations reproduce the Flutter design and are illustrative, not live delivery estimates. Live catalog products use their API image URL; those without one use a branded placeholder. The app does not silently substitute demo products for a failed live request.
 
 The Flutter packaging PNGs in `public/images/proto-*.png` can be regenerated from the current Flutter catalog by running this command in `D:\proto-app\flutter_app`:
 

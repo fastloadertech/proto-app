@@ -3,9 +3,25 @@ import type { StorageLike } from './persistence.ts'
 
 export const HISTORY_STORAGE_KEY = 'proto:web:demo-orders:v1'
 
+export const DEMO_ORDER_STATUSES = ['demo-confirmed', 'demo-reviewed', 'demo-archived'] as const
+export type DemoOrderStatus = typeof DEMO_ORDER_STATUSES[number]
+
+export function demoOrderStatusLabel(status: DemoOrderStatus): string {
+  switch (status) {
+    case 'demo-confirmed': return 'Demo confirmed'
+    case 'demo-reviewed': return 'Demo reviewed'
+    case 'demo-archived': return 'Demo archived'
+    default: throw new Error('Unsupported demo order status.')
+  }
+}
+
+function isDemoOrderStatus(value: unknown): value is DemoOrderStatus {
+  return typeof value === 'string' && DEMO_ORDER_STATUSES.some((status) => status === value)
+}
+
 export type DemoOrderHistoryEntry = {
   mode: 'local-demo'
-  status: 'demo-confirmed'
+  status: DemoOrderStatus
   reference: string
   createdAt: string
   currency: 'INR'
@@ -47,7 +63,7 @@ function cleanItem(value: unknown): DemoOrderItem | null {
 }
 
 function cleanEntry(value: unknown): DemoOrderHistoryEntry | null {
-  if (!record(value) || value.mode !== 'local-demo' || value.status !== 'demo-confirmed' || value.currency !== 'INR') return null
+  if (!record(value) || value.mode !== 'local-demo' || !isDemoOrderStatus(value.status) || value.currency !== 'INR') return null
   const reference = cleanText(value.reference, 128)
   const createdAt = cleanText(value.createdAt, 40)
   if (!reference || !createdAt || !/^\d{4}-\d{2}-\d{2}T/.test(createdAt) || !Number.isFinite(Date.parse(createdAt))) return null
@@ -74,7 +90,7 @@ function cleanEntry(value: unknown): DemoOrderHistoryEntry | null {
   }
   if (Number(total) !== value.subtotalMinor || count !== value.count) return null
   return {
-    mode: 'local-demo', status: 'demo-confirmed', reference, createdAt, currency: 'INR',
+    mode: 'local-demo', status: value.status, reference, createdAt, currency: 'INR',
     subtotalMinor: Number(total), count, items, delivery: { city, state, pinCode },
   }
 }
@@ -116,6 +132,33 @@ export function toHistoryEntry(order: DemoOrder): DemoOrderHistoryEntry {
   })
   if (!entry) throw new Error('The demo order could not be added to local history.')
   return entry
+}
+
+/** Updates an admin annotation on a local demo record without changing its order snapshot. */
+export function updateDemoOrderStatus(
+  entries: DemoOrderHistoryEntry[],
+  reference: string,
+  status: DemoOrderStatus,
+): DemoOrderHistoryEntry[] {
+  if (typeof reference !== 'string' || !reference || reference !== reference.trim() ||
+      reference.length > 128 || /[\u0000-\u001f\u007f]/.test(reference)) {
+    throw new Error('Enter a valid demo order reference.')
+  }
+  if (!isDemoOrderStatus(status)) throw new Error('Unsupported demo order status.')
+  if (!Array.isArray(entries)) throw new Error('Demo order history is invalid.')
+
+  let found = false
+  const updated = entries.map((entry) => {
+    const valid = cleanEntry(entry)
+    if (!valid) throw new Error('Demo order history contains an invalid record.')
+    if (valid.reference === reference) {
+      found = true
+      valid.status = status
+    }
+    return valid
+  })
+  if (!found) throw new Error('Demo order reference was not found.')
+  return updated
 }
 
 export function readDemoOrders(storage: StorageLike | null | undefined): DemoOrderHistoryEntry[] {

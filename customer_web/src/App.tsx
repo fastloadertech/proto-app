@@ -5,16 +5,18 @@ import { ProductCard } from './components/ProductCard.tsx'
 import { ProductDetailDialog } from './components/ProductDetailDialog.tsx'
 import { ProductVisual } from './components/ProductVisual.tsx'
 import { CheckoutPage } from './components/CheckoutPage.tsx'
+import { AdminDashboard } from './components/AdminDashboard.tsx'
 import { DemoOrderHistoryPage } from './components/DemoOrderHistoryPage.tsx'
 import { OrderConfirmationPage } from './components/OrderConfirmationPage.tsx'
 import { filterProducts, type SortOption } from './lib/catalogFilters.ts'
 import { calculateBag, createDemoSubmitController, setBagQuantity, type CheckoutDetails, type DemoOrder } from './lib/checkout.ts'
+import { readAdminInventory, updateInventoryItem, writeAdminInventory, type InventoryEdits } from './lib/adminInventory.ts'
 import { formatPrice } from './lib/formatPrice.ts'
-import { readDemoOrders, toHistoryEntry, writeDemoOrders, type DemoOrderHistoryEntry } from './lib/orderHistory.ts'
+import { readDemoOrders, toHistoryEntry, updateDemoOrderStatus, writeDemoOrders, type DemoOrderHistoryEntry, type DemoOrderStatus } from './lib/orderHistory.ts'
 import { getBrowserStorage, readBag, readFavorites, writeBag, writeFavorites } from './lib/persistence.ts'
 import type { Catalog, Product } from './types/catalog.ts'
 
-type View = 'home' | 'shop' | 'categories' | 'bag' | 'checkout' | 'confirmation' | 'orders' | 'you'
+type View = 'home' | 'shop' | 'categories' | 'bag' | 'checkout' | 'confirmation' | 'orders' | 'you' | 'admin'
 type PrimaryTab = 'home' | 'categories' | 'bag' | 'you'
 type LoadState = 'loading' | 'ready' | 'error'
 const locations = ['Indiranagar, Bengaluru', 'Koramangala, Bengaluru', 'HSR Layout, Bengaluru']
@@ -36,6 +38,10 @@ function App() {
   const [favorites, setFavorites] = useState<string[]>(() => readFavorites(storage))
   const [demoOrders, setDemoOrders] = useState<DemoOrderHistoryEntry[]>(() => readDemoOrders(storage))
   const demoOrdersRef = useRef(demoOrders)
+  const [inventoryEdits, setInventoryEdits] = useState<InventoryEdits>(() => readAdminInventory(storage))
+  const inventoryEditsRef = useRef(inventoryEdits)
+  const [inventoryPersisted, setInventoryPersisted] = useState(true)
+  const [ordersPersisted, setOrdersPersisted] = useState(true)
   const [confirmedOrder, setConfirmedOrder] = useState<DemoOrder | null>(null)
   const [historySaved, setHistorySaved] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -119,7 +125,9 @@ function App() {
       const next = [entry, ...demoOrdersRef.current.filter((previous) => previous.reference !== entry.reference)].slice(0, 20)
       demoOrdersRef.current = next
       setDemoOrders(next)
-      setHistorySaved(writeDemoOrders(storage, next))
+      const saved = writeDemoOrders(storage, next)
+      setHistorySaved(saved)
+      setOrdersPersisted(saved)
       return true
     }, () => setQuantities({}))
     navigate('checkout')
@@ -136,6 +144,30 @@ function App() {
       setSubmitError(cause instanceof Error ? cause.message : 'Could not create the demo order. Please try again.')
     } finally {
       setSubmitting(false)
+    }
+  }
+  function saveInventory(product: Product, priceInput: string, stockInput: string): string | null {
+    try {
+      const next = updateInventoryItem(inventoryEditsRef.current, product, priceInput, stockInput)
+      inventoryEditsRef.current = next
+      setInventoryEdits(next)
+      setInventoryPersisted(writeAdminInventory(storage, next))
+      return null
+    } catch (cause) {
+      return cause instanceof Error ? cause.message : 'Could not update the demo inventory item.'
+    }
+  }
+  function changeDemoOrderStatus(reference: string, status: DemoOrderStatus): string | null {
+    try {
+      const next = updateDemoOrderStatus(demoOrdersRef.current, reference, status)
+      demoOrdersRef.current = next
+      setDemoOrders(next)
+      const saved = writeDemoOrders(storage, next)
+      setOrdersPersisted(saved)
+      setHistorySaved(saved)
+      return null
+    } catch (cause) {
+      return cause instanceof Error ? cause.message : 'Could not update the demo order status.'
     }
   }
   function toggleFavorite(product: Product) {
@@ -228,9 +260,11 @@ function App() {
 
       {view === 'orders' && <DemoOrderHistoryPage orders={demoOrders} onBack={() => navigate('you')} onShop={() => openShop()} />}
 
-      {view === 'you' && <div className="page-wrap simple-page"><div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div><p className="eyebrow">YOUR PROTO</p><h1>You</h1><div className="state-panel account-panel"><Icon name="user" size={38} /><h2>Your account is coming to web.</h2><p>Sign in and real delivery tracking are not connected here. Your bag, saved products, and demo orders stay local to this browser when storage is available.</p><button type="button" className="primary-button" onClick={() => navigate('orders')}>View demo orders <Icon name="arrow" size={18} /></button></div><section className="saved-section"><h2>Saved products</h2>{loadState !== 'ready' ? catalogState : savedProducts.length ? <div className="product-grid">{savedProducts.map(card)}</div> : <p className="page-description">{catalogEmpty ? 'No products are available to save right now.' : 'Nothing saved yet. Tap the heart on a product to find it here.'}</p>}</section></div>}
+      {view === 'admin' && <AdminDashboard products={catalog?.products ?? []} orders={demoOrders} inventoryEdits={inventoryEdits} catalogState={loadState} catalogError={error} onRetryCatalog={retry} onSaveInventory={saveInventory} onUpdateOrderStatus={changeDemoOrderStatus} onExit={() => navigate('you')} persistenceNotice={!inventoryPersisted || !ordersPersisted ? 'Browser storage is unavailable. Recent admin changes will last only until this page is refreshed.' : ''} />}
+
+      {view === 'you' && <div className="page-wrap simple-page"><div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div><p className="eyebrow">YOUR PROTO</p><h1>You</h1><div className="state-panel account-panel"><Icon name="user" size={38} /><h2>Your account is coming to web.</h2><p>Sign in and real delivery tracking are not connected here. Your bag, saved products, and demo orders stay local to this browser when storage is available.</p><button type="button" className="primary-button" onClick={() => navigate('orders')}>View demo orders <Icon name="arrow" size={18} /></button><button type="button" className="secondary-button admin-entry-button" onClick={() => navigate('admin')}>Open demo admin</button></div><section className="saved-section"><h2>Saved products</h2>{loadState !== 'ready' ? catalogState : savedProducts.length ? <div className="product-grid">{savedProducts.map(card)}</div> : <p className="page-description">{catalogEmpty ? 'No products are available to save right now.' : 'Nothing saved yet. Tap the heart on a product to find it here.'}</p>}</section></div>}
     </main>
-    <nav className="bottom-nav" aria-label="Primary navigation"><div className="bottom-nav-inner">{([{ id: 'home', label: 'Shop', icon: 'home' }, { id: 'categories', label: 'Categories', icon: 'grid' }, { id: 'bag', label: 'Bag', icon: 'bag' }, { id: 'you', label: 'You', icon: 'user' }] as const).map((item) => <button key={item.id} type="button" className={isActiveTab(item.id) ? 'active' : ''} aria-current={isActiveTab(item.id) ? 'page' : undefined} disabled={submitting} onClick={() => navigate(item.id)}><span className="nav-icon"><Icon name={item.icon} size={22} filled={item.id === 'home' && (view === 'home' || view === 'shop')} />{item.id === 'bag' && loadState === 'ready' && bagCount > 0 && <i>{bagCount}</i>}</span><span>{item.label}</span></button>)}</div></nav>
+    {view !== 'admin' && <nav className="bottom-nav" aria-label="Primary navigation"><div className="bottom-nav-inner">{([{ id: 'home', label: 'Shop', icon: 'home' }, { id: 'categories', label: 'Categories', icon: 'grid' }, { id: 'bag', label: 'Bag', icon: 'bag' }, { id: 'you', label: 'You', icon: 'user' }] as const).map((item) => <button key={item.id} type="button" className={isActiveTab(item.id) ? 'active' : ''} aria-current={isActiveTab(item.id) ? 'page' : undefined} disabled={submitting} onClick={() => navigate(item.id)}><span className="nav-icon"><Icon name={item.icon} size={22} filled={item.id === 'home' && (view === 'home' || view === 'shop')} />{item.id === 'bag' && loadState === 'ready' && bagCount > 0 && <i>{bagCount}</i>}</span><span>{item.label}</span></button>)}</div></nav>}
     <ProductDetailDialog product={selectedProduct} onClose={() => setSelectedProduct(null)} quantity={selectedProduct ? quantities[selectedProduct.id] ?? 0 : 0} onQuantityChange={changeQuantity} favorite={selectedProduct ? favorites.includes(selectedProduct.id) : false} onFavoriteToggle={toggleFavorite} />
   </div>
 }

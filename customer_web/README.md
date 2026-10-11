@@ -50,6 +50,16 @@ The bag leads to an **explicitly local demo checkout** with Indian contact and a
 
 Only the catalog endpoints above are connected in optional live mode. The existing real order API requires customer authentication, which this web app does not provide; even in live catalog mode, checkout remains a local demo. No account, real order placement, payment, or delivery tracking is connected on web. The 12 MIN badge and sample locations reproduce the Flutter design and are illustrative, not live delivery estimates. Live catalog products use their API image URL; those without one use a branded placeholder. The app does not silently substitute demo products for a failed live request.
 
+## Local demo admin
+
+From the storefront, open **You → Open demo admin**. The dashboard reads the same catalog and local demo order history as the customer view. Its Dashboard, Inventory, and Demo orders tabs show product counts, sample stock levels, editable demo prices and quantities, and saved demo order records.
+
+The Product model has no stock quantity, so admin inventory starts with **sample values**: 12 units for catalog-available products and 0 for unavailable products. Quantities 1–5 are marked low stock. Validated edits are stored separately under `proto:web:admin:inventory:v1`. They affect only the admin preview; customer catalog prices and availability are unchanged. Adding products is not supported by this local overlay.
+
+Demo order statuses are local review annotations: **Demo confirmed**, **Demo reviewed**, and **Demo archived**. Status updates use the existing versioned `proto:web:demo-orders:v1` history key and remain visible after refresh when browser storage works. History contains item snapshots and city, state, and PIN code, but no stored name, phone, or street address. If storage is blocked, admin edits remain in memory only until refresh.
+
+This admin view has no sign-in, backend database, production inventory connection, or real order actions. It is a local prototype, not a production administration tool.
+
 The Flutter packaging PNGs in `public/images/proto-*.png` can be regenerated from the current Flutter catalog by running this command in `D:\proto-app\flutter_app`:
 
 ```powershell

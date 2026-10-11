@@ -4,12 +4,18 @@ import { Icon } from './components/Icon.tsx'
 import { ProductCard } from './components/ProductCard.tsx'
 import { ProductDetailDialog } from './components/ProductDetailDialog.tsx'
 import { ProductVisual } from './components/ProductVisual.tsx'
+import { CheckoutPage } from './components/CheckoutPage.tsx'
+import { DemoOrderHistoryPage } from './components/DemoOrderHistoryPage.tsx'
+import { OrderConfirmationPage } from './components/OrderConfirmationPage.tsx'
 import { filterProducts, type SortOption } from './lib/catalogFilters.ts'
+import { calculateBag, createDemoSubmitController, setBagQuantity, type CheckoutDetails, type DemoOrder } from './lib/checkout.ts'
 import { formatPrice } from './lib/formatPrice.ts'
+import { readDemoOrders, toHistoryEntry, writeDemoOrders, type DemoOrderHistoryEntry } from './lib/orderHistory.ts'
 import { getBrowserStorage, readBag, readFavorites, writeBag, writeFavorites } from './lib/persistence.ts'
 import type { Catalog, Product } from './types/catalog.ts'
 
-type View = 'home' | 'shop' | 'categories' | 'bag' | 'you'
+type View = 'home' | 'shop' | 'categories' | 'bag' | 'checkout' | 'confirmation' | 'orders' | 'you'
+type PrimaryTab = 'home' | 'categories' | 'bag' | 'you'
 type LoadState = 'loading' | 'ready' | 'error'
 const locations = ['Indiranagar, Bengaluru', 'Koramangala, Bengaluru', 'HSR Layout, Bengaluru']
 
@@ -28,6 +34,13 @@ function App() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [quantities, setQuantities] = useState<Record<string, number>>(() => readBag(storage))
   const [favorites, setFavorites] = useState<string[]>(() => readFavorites(storage))
+  const [demoOrders, setDemoOrders] = useState<DemoOrderHistoryEntry[]>(() => readDemoOrders(storage))
+  const demoOrdersRef = useRef(demoOrders)
+  const [confirmedOrder, setConfirmedOrder] = useState<DemoOrder | null>(null)
+  const [historySaved, setHistorySaved] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const submitControllerRef = useRef<ReturnType<typeof createDemoSubmitController> | null>(null)
   const [location, setLocation] = useState(locations[0])
   const [locationOpen, setLocationOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -67,9 +80,9 @@ function App() {
   const products = useMemo(() => filterProducts(catalog?.products ?? [], {
     query, categorySlug, availableOnly, sort,
   }), [catalog, query, categorySlug, availableOnly, sort])
+  const bagSummary = useMemo(() => calculateBag(catalog?.products ?? [], quantities), [catalog, quantities])
   const bagProducts = (catalog?.products ?? []).filter((product) => (quantities[product.id] ?? 0) > 0)
   const bagCount = bagProducts.reduce((total, product) => total + quantities[product.id], 0)
-  const bagTotal = bagProducts.reduce((total, product) => total + Number(product.price) * quantities[product.id], 0)
   const catalogEmpty = loadState === 'ready' && catalog?.products.length === 0
   const savedProducts = (catalog?.products ?? []).filter((product) => favorites.includes(product.id))
   const activeCategory = catalog?.categories.find((category) => category.slug === categorySlug)
@@ -83,6 +96,11 @@ function App() {
     setLocationOpen(false)
     window.scrollTo(0, 0)
   }
+  function isActiveTab(tab: PrimaryTab) {
+    return view === tab || (view === 'shop' && tab === 'home') ||
+      ((view === 'checkout' || view === 'confirmation') && tab === 'bag') ||
+      (view === 'orders' && tab === 'you')
+  }
   function openShop(slug: string | null = null, focusSearch = false, showFilters = false) {
     setCategorySlug(slug)
     setFiltersOpen(showFilters)
@@ -91,13 +109,34 @@ function App() {
   }
   function clearFilters() { setQuery(''); setCategorySlug(null); setAvailableOnly(false); setSort('featured') }
   function changeQuantity(product: Product, next: number) {
-    setQuantities((current) => {
-      const quantity = Number.isFinite(next) ? Math.max(0, Math.min(99, Math.trunc(next))) : 0
-      const updated = { ...current }
-      if (quantity === 0) delete updated[product.id]
-      else updated[product.id] = quantity
-      return updated
-    })
+    setQuantities((current) => setBagQuantity(current, product.id, next))
+  }
+  function beginCheckout() {
+    if (!bagSummary.lines.length || bagSummary.error) return
+    setSubmitError('')
+    submitControllerRef.current = createDemoSubmitController((order) => {
+      const entry = toHistoryEntry(order)
+      const next = [entry, ...demoOrdersRef.current.filter((previous) => previous.reference !== entry.reference)].slice(0, 20)
+      demoOrdersRef.current = next
+      setDemoOrders(next)
+      setHistorySaved(writeDemoOrders(storage, next))
+      return true
+    }, () => setQuantities({}))
+    navigate('checkout')
+  }
+  async function placeDemoOrder(details: CheckoutDetails) {
+    if (!submitControllerRef.current) return
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      const order = await submitControllerRef.current.submit(bagSummary, details)
+      setConfirmedOrder(order)
+      navigate('confirmation')
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'Could not create the demo order. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
   function toggleFavorite(product: Product) {
     setFavorites((current) => current.includes(product.id)
@@ -128,7 +167,7 @@ function App() {
           {locationOpen && <div className="location-options" id="location-options"><p>Choose a sample location</p>{locations.map((option) => <button key={option} type="button" onClick={() => { setLocation(option); setLocationOpen(false) }}><span>{option}</span>{location === option && <Icon name="check" size={18} />}</button>)}</div>}
         </div>
         <div className="home-search-row"><button className="home-search" type="button" onClick={() => openShop(null, true)}><Icon name="search" size={23} /><span>Search protein, creatine, snacks...</span></button><button className="home-filter" type="button" aria-label="Open catalog filters" onClick={() => openShop(null, false, true)}><Icon name="filter" size={22} /></button></div>
-        <div className="mode-banner"><Icon name="bolt" size={18} /><span>{configurationError ? 'CATALOG CONFIGURATION ERROR' : mode === 'demo' ? 'LOCAL DEMO · Catalog and bag are local previews' : 'LIVE CATALOG · Bag is local; checkout is not connected'}</span></div>
+        <div className="mode-banner"><Icon name="bolt" size={18} /><span>{configurationError ? 'CATALOG CONFIGURATION ERROR' : mode === 'demo' ? 'LOCAL DEMO · Catalog, bag and checkout are local previews' : 'LIVE CATALOG · Bag and checkout remain local demos'}</span></div>
         <section className="home-intro" aria-labelledby="home-title"><div><p className="eyebrow">BUILT FOR YOUR EVERYDAY</p><h1 id="home-title">Fuel your next level.</h1></div><span>Small habits. Stronger you.</span></section>
         {catalogState}
         {catalogEmpty && <div className="state-panel"><h2>No products are available right now.</h2><p>Check back shortly or try loading the catalog again.</p><button className="primary-button" type="button" onClick={retry}>Try again <Icon name="arrow" size={18} /></button></div>}
@@ -162,11 +201,36 @@ function App() {
 
       {view === 'categories' && <div className="page-wrap simple-page"><div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div><p className="eyebrow">FIND YOUR FUEL</p><h1>Categories</h1><p className="page-description">Explore the essentials for your routine.</p>{catalogState}{loadState === 'ready' && (catalog?.categories.length ? <div className="categories-grid">{catalog.categories.map((category) => { const artwork = catalog.products.find((product) => product.category.slug === category.slug); return <button className="category-tile" type="button" key={category.id} onClick={() => openShop(category.slug)}><span className="category-tile-art">{artwork && <ProductVisual imageUrl={artwork.imageUrl} name={artwork.name} />}</span><strong>{category.name}</strong><span>{category.description}</span><Icon name="arrow" size={19} /></button> })}</div> : <div className="state-panel"><h2>No categories are available yet.</h2><p>Try loading the catalog again shortly.</p><button className="primary-button" type="button" onClick={retry}>Try again <Icon name="arrow" size={18} /></button></div>)}</div>}
 
-      {view === 'bag' && <div className="page-wrap simple-page"><div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div><p className="eyebrow">YOUR EVERYDAY FUEL</p><h1>Bag {loadState === 'ready' && <span className="heading-count">{bagCount}</span>}</h1><p className="page-description">Local bag preview. Checkout and delivery are not connected on web yet.</p>{loadState !== 'ready' ? catalogState : bagProducts.length ? <><div className="bag-list">{bagProducts.map((product) => <div className="bag-item" key={product.id}><ProductVisual imageUrl={product.imageUrl} name={product.name} /><div><strong>{product.name}</strong><span>{product.weightLabel ?? product.category.name}</span><b>{formatPrice(product.price, product.currency)}</b></div><div className="quantity-stepper"><button type="button" aria-label={'Remove one ' + product.name} onClick={() => changeQuantity(product, quantities[product.id] - 1)}><Icon name="minus" size={17} /></button><output aria-label={product.name + ' quantity'}>{quantities[product.id]}</output><button type="button" aria-label={'Add one ' + product.name} onClick={() => changeQuantity(product, quantities[product.id] + 1)}><Icon name="plus" size={17} /></button></div></div>)}</div><div className="bag-summary"><span>Estimated subtotal</span><strong>{formatPrice(bagTotal.toFixed(2), bagProducts[0].currency)}</strong></div></> : <div className="state-panel"><Icon name="bag" size={38} /><h2>Your bag is empty.</h2><p>Find something that fuels your next day.</p><button type="button" className="primary-button" onClick={() => openShop()}>Explore products <Icon name="arrow" size={18} /></button></div>}</div>}
+      {view === 'bag' && <div className="page-wrap simple-page">
+        <div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div>
+        <p className="eyebrow">YOUR EVERYDAY FUEL</p>
+        <h1>Bag {loadState === 'ready' && <span className="heading-count">{bagCount}</span>}</h1>
+        <p className="page-description">Your bag stays in this browser. Checkout creates a local demo order; no delivery is scheduled.</p>
+        {loadState !== 'ready' ? catalogState : bagProducts.length ? <>
+          <section className="bag-list" aria-label="Items in your bag">{bagProducts.map((product) => {
+            const line = bagSummary.lines.find((candidate) => candidate.product.id === product.id)
+            const quantity = quantities[product.id]
+            return <article className="bag-item" key={product.id}>
+              <ProductVisual imageUrl={product.imageUrl} name={product.name} />
+              <div className="bag-item-info"><strong>{product.name}</strong><span>{product.weightLabel ?? product.category.name}</span><span>Unit price: {formatPrice(product.price, product.currency)}</span><button type="button" className="bag-remove" onClick={() => changeQuantity(product, 0)}>Remove item</button></div>
+              <div className="bag-item-actions"><div className="quantity-stepper"><button type="button" aria-label={'Remove one ' + product.name} onClick={() => changeQuantity(product, quantity - 1)} disabled={quantity < 1}><Icon name="minus" size={17} /></button><output aria-label={product.name + ' quantity'} aria-live="polite">{quantity}</output><button type="button" aria-label={'Add one ' + product.name} onClick={() => changeQuantity(product, quantity + 1)} disabled={quantity >= 99}><Icon name="plus" size={17} /></button></div><div className="bag-line-total"><span>Line total</span><strong>{line ? formatPrice((line.lineMinor / 100).toFixed(2), product.currency) : '—'}</strong></div></div>
+            </article>
+          })}</section>
+          <div className="bag-summary" role="status" aria-live="polite"><span>Item subtotal</span><strong>{bagSummary.currency ? formatPrice((bagSummary.subtotalMinor / 100).toFixed(2), bagSummary.currency) : '—'}</strong></div>
+          {bagSummary.error && <div className="bag-error" role="alert"><p>{bagSummary.error} Update your bag before checkout.</p><button type="button" className="secondary-button" onClick={() => setQuantities({})}>Clear bag</button></div>}
+          <button type="button" className="primary-button bag-checkout-button" onClick={beginCheckout} disabled={Boolean(bagSummary.error)}>Continue to demo checkout <Icon name="arrow" size={18} /></button>
+        </> : <div className="state-panel"><Icon name="bag" size={38} /><h2>Your bag is empty.</h2><p>Find something that fuels your next day.</p><button type="button" className="primary-button" onClick={() => openShop()}>Explore products <Icon name="arrow" size={18} /></button></div>}
+      </div>}
 
-      {view === 'you' && <div className="page-wrap simple-page"><div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div><p className="eyebrow">YOUR PROTO</p><h1>You</h1><div className="state-panel account-panel"><Icon name="user" size={38} /><h2>Your account is coming to web.</h2><p>Sign in, orders, and delivery tracking are not connected here yet. Your bag and saved products stay local to this browser when storage is available.</p><button type="button" className="primary-button" onClick={() => openShop()}>Explore products <Icon name="arrow" size={18} /></button></div><section className="saved-section"><h2>Saved products</h2>{loadState !== 'ready' ? catalogState : savedProducts.length ? <div className="product-grid">{savedProducts.map(card)}</div> : <p className="page-description">{catalogEmpty ? 'No products are available to save right now.' : 'Nothing saved yet. Tap the heart on a product to find it here.'}</p>}</section></div>}
+      {view === 'checkout' && <CheckoutPage summary={bagSummary} submitting={submitting} submitError={submitError} onBack={() => navigate('bag')} onPlace={placeDemoOrder} />}
+
+      {view === 'confirmation' && confirmedOrder && <OrderConfirmationPage order={confirmedOrder} historySaved={historySaved} onShop={() => openShop()} onOrders={() => navigate('orders')} />}
+
+      {view === 'orders' && <DemoOrderHistoryPage orders={demoOrders} onBack={() => navigate('you')} onShop={() => openShop()} />}
+
+      {view === 'you' && <div className="page-wrap simple-page"><div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div><p className="eyebrow">YOUR PROTO</p><h1>You</h1><div className="state-panel account-panel"><Icon name="user" size={38} /><h2>Your account is coming to web.</h2><p>Sign in and real delivery tracking are not connected here. Your bag, saved products, and demo orders stay local to this browser when storage is available.</p><button type="button" className="primary-button" onClick={() => navigate('orders')}>View demo orders <Icon name="arrow" size={18} /></button></div><section className="saved-section"><h2>Saved products</h2>{loadState !== 'ready' ? catalogState : savedProducts.length ? <div className="product-grid">{savedProducts.map(card)}</div> : <p className="page-description">{catalogEmpty ? 'No products are available to save right now.' : 'Nothing saved yet. Tap the heart on a product to find it here.'}</p>}</section></div>}
     </main>
-    <nav className="bottom-nav" aria-label="Primary navigation"><div className="bottom-nav-inner">{([{ id: 'home', label: 'Shop', icon: 'home' }, { id: 'categories', label: 'Categories', icon: 'grid' }, { id: 'bag', label: 'Bag', icon: 'bag' }, { id: 'you', label: 'You', icon: 'user' }] as const).map((item) => <button key={item.id} type="button" className={(view === item.id || (view === 'shop' && item.id === 'home')) ? 'active' : ''} aria-current={(view === item.id || (view === 'shop' && item.id === 'home')) ? 'page' : undefined} onClick={() => navigate(item.id)}><span className="nav-icon"><Icon name={item.icon} size={22} filled={item.id === 'home' && (view === 'home' || view === 'shop')} />{item.id === 'bag' && loadState === 'ready' && bagCount > 0 && <i>{bagCount}</i>}</span><span>{item.label}</span></button>)}</div></nav>
+    <nav className="bottom-nav" aria-label="Primary navigation"><div className="bottom-nav-inner">{([{ id: 'home', label: 'Shop', icon: 'home' }, { id: 'categories', label: 'Categories', icon: 'grid' }, { id: 'bag', label: 'Bag', icon: 'bag' }, { id: 'you', label: 'You', icon: 'user' }] as const).map((item) => <button key={item.id} type="button" className={isActiveTab(item.id) ? 'active' : ''} aria-current={isActiveTab(item.id) ? 'page' : undefined} disabled={submitting} onClick={() => navigate(item.id)}><span className="nav-icon"><Icon name={item.icon} size={22} filled={item.id === 'home' && (view === 'home' || view === 'shop')} />{item.id === 'bag' && loadState === 'ready' && bagCount > 0 && <i>{bagCount}</i>}</span><span>{item.label}</span></button>)}</div></nav>
     <ProductDetailDialog product={selectedProduct} onClose={() => setSelectedProduct(null)} quantity={selectedProduct ? quantities[selectedProduct.id] ?? 0 : 0} onQuantityChange={changeQuantity} favorite={selectedProduct ? favorites.includes(selectedProduct.id) : false} onFavoriteToggle={toggleFavorite} />
   </div>
 }

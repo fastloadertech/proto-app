@@ -32,6 +32,21 @@ For local development, copy `.env.example` to `.env.development.local`; that fil
 
 The API mapper consumes the current catalog DTO: category `id`, `slug`, `name`, nullable `description`; product `id`, `sku`, `name`, nullable `description`, decimal-string `price`, `currency`, nullable `imageUrl`, nullable `stockQuantity`, `available`, nested `category`, and `createdAt`. The shared GET client reports network, HTTP, timeout, malformed JSON, and invalid DTO failures without exposing server response bodies. Live failures show a retryable error. The app does not silently replace live data with demo products.
 
+## Customer authentication assessment (Day 6)
+
+The shared backend has a **development-only** customer login at `POST /api/v1/auth/customer/login`. It accepts `{ phone, code }`: an E.164 phone number and a six-digit development code configured only on the server. For an existing active customer it returns `{ accessToken, role: "CUSTOMER", user }`, where `user` is a selected profile containing ID, name, phone, nullable email, role, active flag, and timestamps. `GET /api/v1/auth/me` requires a Bearer JWT and is restricted to customers. Separate driver login and profile routes require the `DRIVER` role; no administrator role exists. The JWT guard checks signature, issuer, audience, expiry, account role, and current account status.
+
+This is **not a public customer sign-in flow**. The customer and driver login routes use the same server-configured development code and reject requests in production. There is no customer registration, code delivery or phone ownership check, rate limiting, session refresh, server logout, or token revocation. Proto therefore does not expose a login form, request a development code, or hold an access token. The **You** page remains an honest local account preview. Customer login would not grant access to the local demo admin or to any driver route.
+
+Before enabling customer sign-in, the backend and web client need an agreed production contract:
+
+1. A way to provision customers and verify control of their phone or another identity, with short-lived, per-user challenges. Responses must not reveal whether an account exists. Validate phone and challenge input server-side, and rate-limit by account, phone, and network source with abuse monitoring.
+2. A browser session strategy with an explicit expiry and renewal policy. Prefer a server-managed `Secure`, `HttpOnly`, `SameSite` cookie with CSRF and origin protections, or an equivalent backend-for-frontend session. Never place access tokens, verification codes, or customer contact details in URLs, logs, Vite variables, or browser local storage.
+3. A customer-only profile read, session expiry handling, and server-side logout/revocation. A 401 must clear the web session; a 403 must deny access and fail closed if the account role is wrong. Other network failures should show a retryable error without claiming the user is signed in. Profile and login responses need a documented versioned DTO, including the safe user fields and role.
+4. Server-enforced customer/driver/admin authorization on every protected route. The demo admin remains separate until a real admin role and protected admin APIs exist. Checkout and order history stay local demos until authentication, pricing, stock reservation, payment and delivery behavior are complete and verified.
+
+Once that contract exists, Proto can add a typed auth adapter and a memory-only session controller, validate response role and shape, and test successful login, invalid credentials, malformed responses, API failures, expiry and logout. No production auth endpoint or browser session contract was added on Day 6.
+
 ## Shared backend assessment (Day 5)
 
 The shared backend was inspected at `D:\loader-app\backend` on `main`; Loader's Flutter client is at `D:\loader-app\mobile`. The backend uses NestJS, Prisma, and PostgreSQL. Its public `GET /api/v1/catalog/categories` and `GET /api/v1/catalog/products?active=true&sort=newest` routes supply the live web catalogue. Products with zero stock remain visible; `stockQuantity: null` means stock is not tracked. Loader continues to use its separate, opt-in authenticated driver API. No backend or Loader files were changed for this integration.

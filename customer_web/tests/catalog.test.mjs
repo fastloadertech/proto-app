@@ -17,8 +17,10 @@ test('category, availability, and empty filters work together', () => {
   assert.equal(category.length, 2)
   assert.ok(category.every((product) => product.category.slug === 'snacks'))
   const available = filterProducts(demoCatalog.products, { ...defaults, availableOnly: true })
-  assert.ok(available.every((product) => product.available))
+  assert.ok(available.every((product) => product.available && product.stockQuantity !== 0))
   assert.ok(available.length < demoCatalog.products.length)
+  const zeroStock = { ...demoCatalog.products[0], stockQuantity: 0, available: true }
+  assert.deepEqual(filterProducts([zeroStock], { ...defaults, availableOnly: true }), [])
   assert.deepEqual(filterProducts(demoCatalog.products, { ...defaults, query: 'no-such-protein' }), [])
 })
 

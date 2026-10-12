@@ -13,15 +13,17 @@ type Props = {
 }
 
 export function ProductCard({ product, onOpen, quantity, onQuantityChange, favorite, onFavoriteToggle }: Props) {
+  const unavailable = !product.available || product.stockQuantity === 0
+  const atQuantityLimit = quantity >= 99 || (product.stockQuantity != null && quantity >= product.stockQuantity)
   return (
     <article className="product-card">
       <div className="product-image-wrap">
         <button className="product-image-button" type="button" onClick={() => onOpen(product)} aria-label={`View ${product.name} details`}>
           <ProductVisual imageUrl={product.imageUrl} name={product.name} />
         </button>
-        {(!product.available || product.badge) && (
-          <span className={`availability ${product.available ? 'product-badge' : 'sold-out'}`}>
-            {product.available ? product.badge : 'UNAVAILABLE'}
+        {(unavailable || product.badge) && (
+          <span className={`availability ${unavailable ? 'sold-out' : 'product-badge'}`}>
+            {unavailable ? 'UNAVAILABLE' : product.badge}
           </span>
         )}
         <button
@@ -44,7 +46,7 @@ export function ProductCard({ product, onOpen, quantity, onQuantityChange, favor
             <del className="old-price">{formatPrice(product.originalPrice, product.currency)}</del>
           )}
         </div>
-        {!product.available ? (
+        {unavailable ? (
           <button className="add-button unavailable-button" type="button" disabled>UNAVAILABLE</button>
         ) : quantity > 0 ? (
           <div className="quantity-stepper" role="group" aria-label={`${product.name} quantity in bag`}>
@@ -52,7 +54,7 @@ export function ProductCard({ product, onOpen, quantity, onQuantityChange, favor
               <Icon name="minus" size={18} />
             </button>
             <output aria-live="polite" aria-label={`${product.name} quantity`}>{quantity}</output>
-            <button type="button" onClick={() => onQuantityChange(product, quantity + 1)} aria-label={`Add one ${product.name}`}>
+            <button type="button" onClick={() => onQuantityChange(product, quantity + 1)} aria-label={`Add one ${product.name}`} disabled={atQuantityLimit}>
               <Icon name="plus" size={18} />
             </button>
           </div>

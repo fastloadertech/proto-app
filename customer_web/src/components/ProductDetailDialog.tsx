@@ -15,6 +15,8 @@ type Props = {
 
 export function ProductDetailDialog({ product, onClose, quantity = 0, onQuantityChange, favorite = false, onFavoriteToggle }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const unavailable = product ? !product.available || product.stockQuantity === 0 : false
+  const atQuantityLimit = product ? quantity >= 99 || (product.stockQuantity != null && quantity >= product.stockQuantity) : false
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -31,12 +33,12 @@ export function ProductDetailDialog({ product, onClose, quantity = 0, onQuantity
           <ProductVisual imageUrl={product.imageUrl} name={product.name} className="detail-art" eager />
           <div className="detail-copy">
             <span className="eyebrow">{product.brand || product.category.name}</span>
-            {product.badge && product.available && <span className="detail-badge">{product.badge}</span>}
+            {product.badge && !unavailable && <span className="detail-badge">{product.badge}</span>}
             <h2>{product.name}</h2>
             {product.weightLabel && <span className="product-size">{product.weightLabel}</span>}
             <p>{product.description || 'Product details are coming soon.'}</p>
-            <span className={`detail-availability ${product.available ? 'positive' : 'muted'}`}>
-              <span className="status-dot" aria-hidden="true" />{product.available ? 'Available now' : 'Currently unavailable'}
+            <span className={`detail-availability ${unavailable ? 'muted' : 'positive'}`}>
+              <span className="status-dot" aria-hidden="true" />{unavailable ? 'Currently unavailable' : 'Available now'}
             </span>
             <div className="detail-price-row">
               <strong>{formatPrice(product.price, product.currency)}</strong>
@@ -46,12 +48,12 @@ export function ProductDetailDialog({ product, onClose, quantity = 0, onQuantity
             </div>
             <div className="detail-actions">
               {onQuantityChange && (
-                !product.available ? <button className="add-button unavailable-button" type="button" disabled>UNAVAILABLE</button>
+                unavailable ? <button className="add-button unavailable-button" type="button" disabled>UNAVAILABLE</button>
                   : quantity > 0 ? (
                     <div className="quantity-stepper" role="group" aria-label={`${product.name} quantity in bag`}>
                       <button type="button" onClick={() => onQuantityChange(product, quantity - 1)} aria-label={`Remove one ${product.name}`}><Icon name="minus" size={18} /></button>
                       <output aria-live="polite" aria-label={`${product.name} quantity`}>{quantity}</output>
-                      <button type="button" onClick={() => onQuantityChange(product, quantity + 1)} aria-label={`Add one ${product.name}`}><Icon name="plus" size={18} /></button>
+                      <button type="button" onClick={() => onQuantityChange(product, quantity + 1)} aria-label={`Add one ${product.name}`} disabled={atQuantityLimit}><Icon name="plus" size={18} /></button>
                     </div>
                   ) : <button className="add-button" type="button" onClick={() => onQuantityChange(product, 1)} aria-label={`Add ${product.name} to bag`}>ADD TO BAG <Icon name="plus" size={18} /></button>
               )}

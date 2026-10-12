@@ -13,7 +13,7 @@ export function filterProducts(products: Product[], filters: CatalogFilters): Pr
   const terms = filters.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
   const matches = products.filter((product) => {
     if (filters.categorySlug && product.category.slug !== filters.categorySlug) return false
-    if (filters.availableOnly && !product.available) return false
+    if (filters.availableOnly && (!product.available || product.stockQuantity === 0)) return false
     const searchable = [product.name, product.sku, product.description ?? '', product.category.name]
       .join(' ')
       .toLocaleLowerCase()

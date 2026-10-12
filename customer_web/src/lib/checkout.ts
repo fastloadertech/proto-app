@@ -115,6 +115,9 @@ export function calculateBag(products: Product[], quantities: Record<string, num
     const product = productsById.get(id)
     if (!product) return invalidBag('A product in your bag is no longer in the catalog.')
     if (!product.available) return invalidBag(`${product.name} is currently unavailable.`)
+    if (product.stockQuantity != null && quantity > product.stockQuantity) {
+      return invalidBag(`${product.name} has only ${product.stockQuantity} ${product.stockQuantity === 1 ? 'unit' : 'units'} available. Reduce the quantity before checkout.`)
+    }
     if (currency !== null && product.currency !== currency) {
       return invalidBag('Products in your bag use different currencies.')
     }

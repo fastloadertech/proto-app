@@ -67,6 +67,19 @@ test('bag rejects invalid quantity, unavailable or missing products, bad prices,
   assert.ok(calculateBag([{ ...whey, currency: 'USD' }], { [whey.id]: 1 }).error)
 })
 
+test('tracked stock limits demo checkout while null and absent stock stay untracked', () => {
+  const tracked = { ...whey, stockQuantity: 1 }
+  assert.equal(calculateBag([tracked], { [whey.id]: 1 }).error, null)
+  const overStock = calculateBag([tracked], { [whey.id]: 2 })
+  assert.match(overStock.error, /Whey Isolate has only 1 unit available/)
+  assert.deepEqual(overStock.lines, [])
+  assert.equal(overStock.subtotalMinor, 0)
+  assert.equal(calculateBag([{ ...whey, stockQuantity: null }], { [whey.id]: 2 }).error, null)
+  assert.equal(calculateBag([whey], { [whey.id]: 2 }).error, null)
+  assert.match(calculateBag([{ ...tracked, available: false }], { [whey.id]: 1 }).error, /currently unavailable/)
+  assert.match(calculateBag([{ ...whey, stockQuantity: 0 }], { [whey.id]: 1 }).error, /only 0 units available/)
+})
+
 test('checkout details validate contact and delivery fields', () => {
   assert.deepEqual(validateCheckoutDetails(details), {})
   assert.ok(validateCheckoutDetails({ ...details, phone: '1234567890' }).phone)

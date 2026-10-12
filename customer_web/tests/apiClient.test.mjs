@@ -15,7 +15,7 @@ const product = {
 
 function catalogFetch(categories = [category], products = [product], requests = []) {
   return async (url, init) => {
-    requests.push({ url, method: init.method, accept: init.headers.Accept })
+    requests.push({ url, method: init.method, accept: init.headers.Accept, cache: init.cache })
     return Response.json(url.includes('/categories') ? categories : products)
   }
 }
@@ -44,8 +44,8 @@ test('live catalogue fetches the verified public GET routes and maps backend sto
     env: development, fetchImpl: catalogFetch([category], [product], requests),
   })
   assert.deepEqual(requests, [
-    { url: 'http://localhost:3101/api/v1/catalog/categories', method: 'GET', accept: 'application/json' },
-    { url: 'http://localhost:3101/api/v1/catalog/products?active=true&sort=newest', method: 'GET', accept: 'application/json' },
+    { url: 'http://localhost:3101/api/v1/catalog/categories', method: 'GET', accept: 'application/json', cache: 'no-store' },
+    { url: 'http://localhost:3101/api/v1/catalog/products?active=true&sort=newest', method: 'GET', accept: 'application/json', cache: 'no-store' },
   ])
   assert.equal(catalog.products[0].price, '119.00')
   assert.equal(catalog.products[0].stockQuantity, 4)

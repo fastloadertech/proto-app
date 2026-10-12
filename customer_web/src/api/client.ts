@@ -44,6 +44,7 @@ export async function getJson(
     response = await fetchImpl(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
+      cache: 'no-store',
       signal: AbortSignal.any([signal, timeout]),
     })
   } catch (error) {

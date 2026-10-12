@@ -60,6 +60,7 @@ void main() {
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
           final file = File('${output.path}/proto-${product.id}.png');
           await file.writeAsBytes(bytes!.buffer.asUint8List());
+          // ignore: avoid_print
           print('Exported ${file.path} (${image.width}x${image.height})');
         } finally {
           image.dispose();

@@ -1,3 +1,6 @@
+# Nested Flutter project copy (should live at repo root, not here)
+flutter_app/
+
 # Miscellaneous
 *.class
 *.log

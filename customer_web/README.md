@@ -82,6 +82,24 @@ The backend now conditionally deducts tracked stock within the same transaction 
 
 Duplicate submissions are still possible while stock remains: a durable, customer-scoped idempotency key and request fingerprint need a persisted unique constraint and an agreed retry contract. That would require a separately approved migration, so none was created or applied on Day 8. Production customer authentication, server-approved pricing and delivery fees, payment policy, real pickup configuration and dispatch gating remain open. Customer web still has no order POST or payment integration; live catalogue, read-only live inventory and local demo checkout remain separate.
 
+## Day 10 real-order integration gate
+
+The shared components form **Proto customer web → NestJS API → PostgreSQL/Prisma → Loader DeliveryJob**. The web currently calls only the public catalogue GET routes. The backend already exposes customer-Bearer-only `POST /api/v1/orders`, `GET /api/v1/orders`, and `GET /api/v1/orders/:id`. POST accepts 1–50 distinct product UUIDs with quantities 1–99 and a delivery address requiring `line1` and `city`; `line2`, `state`, `postalCode`, `recipientName`, and E.164 `phone` are optional. It prices from current Product rows with Prisma Decimal, checks activity and tracked stock, conditionally deducts tracked stock, then creates the Order, item snapshots, and one linked `AVAILABLE` DeliveryJob in one transaction. `DeliveryJob.orderId` is unique. Customer order reads are owner-scoped; the detail response includes the linked delivery ID and status. Driver-only `GET /api/v1/deliveries/available` and `/my` expose jobs to Loader when its live-deliveries flag is enabled. Drivers accept and advance jobs through guarded transitions; order and delivery statuses remain distinct.
+
+The web does **not** call these order routes on Day 10. Production customer login does not exist: the only login uses a server-configured six-digit development code and is disabled in production. There is no durable idempotency key or lookup for a lost response; an identical retry can create a second order and job. The backend also creates an immediately available job for a `PENDING` order with a placeholder pickup address, zero delivery fee, no service-area rule, no payment/dispatch policy, and no stock restoration on cancellation. Browser catalogue prices and stock are informative, not an approved order quote. Enabling the POST from this web checkout would turn demo actions into real Loader jobs without those guarantees.
+
+`src/api/orderContract.ts` is a pure parser for the backend's existing order/list/detail response shapes, including decimal amounts, status enums, item snapshots, nullable historical addresses, and the optional linked delivery on detail. It makes no network request, holds no token, and is not connected to checkout or demo history. Its tests run with `npm test`. No backend code, Prisma schema, migration, production environment setting, or Flutter code changed for this Day 10 web increment. There is no new migration to apply. For this Day 10 verification, backend tests used the configured local development database; never run them against production data.
+
+Before enabling real web checkout, establish this sequence:
+
+1. Implement verified production customer identity, an expiring browser session, logout/revocation, abuse controls, and a restricted CORS allowlist. Keep driver credentials and the local demo admin separate.
+2. Define serviceable areas, a real pickup location, delivery charges, and the payment or cash-on-delivery policy. Gate Loader job availability on the agreed fulfillment state.
+3. Add a customer-scoped, durable idempotency key and request fingerprint with an additive, reviewed database migration. Define how a timed-out client retrieves the original result before any retry.
+4. Define a server quote and customer approval for price/stock/fee changes, plus cancellation and tracked-stock restoration. Validate the revised order-to-job state machine with backend concurrency and rollback tests.
+5. Add a separately enabled web auth/session adapter, real order submit and owner-scoped history/status views. Clear the bag only after a validated backend confirmation; never present an uncertain response as success or fall back to demo orders. Verify the full storefront-to-Loader path in an isolated staging environment before rollout.
+
+For the requested future phases, complete **Phase A** stock and cancellation rules and the prerequisite identity/idempotency work first; complete the serviceability and fee portion of **Phase C** before final pricing; then implement **Phase B** payment and dispatch gating, finish **Phase C** tracking, and use **Phase D** production checks and a controlled launch last. No payment gateway, map, GPS tracking, production auth, or deployment was added here.
+
 ## Checks
 
 ```bash

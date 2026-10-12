@@ -13,7 +13,7 @@ import { calculateBag, createDemoSubmitController, setBagQuantity, type Checkout
 import { readAdminInventory, updateInventoryItem, writeAdminInventory, type InventoryEdits } from './lib/adminInventory.ts'
 import { formatPrice } from './lib/formatPrice.ts'
 import { readDemoOrders, toHistoryEntry, updateDemoOrderStatus, writeDemoOrders, type DemoOrderHistoryEntry, type DemoOrderStatus } from './lib/orderHistory.ts'
-import { getBrowserStorage, readBag, readFavorites, writeBag, writeFavorites } from './lib/persistence.ts'
+import { bagForCatalog, getBrowserStorage, readBag, readFavorites, withoutCatalogBag, writeBag, writeFavorites } from './lib/persistence.ts'
 import type { Catalog, Product } from './types/catalog.ts'
 
 type View = 'home' | 'shop' | 'categories' | 'bag' | 'checkout' | 'confirmation' | 'orders' | 'you' | 'admin'
@@ -64,9 +64,6 @@ function App() {
     loadCatalog(mode, controller.signal)
       .then((result) => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return
-        const knownIds = new Set(result.products.map((product) => product.id))
-        setQuantities((current) => Object.fromEntries(Object.entries(current).filter(([id]) => knownIds.has(id))))
-        setFavorites((current) => current.filter((id) => knownIds.has(id)))
         setSelectedProduct((current) => current ? result.products.find((product) => product.id === current.id) ?? null : null)
         setCatalog(result); setError(''); setLoadState('ready')
       })
@@ -86,7 +83,9 @@ function App() {
   const products = useMemo(() => filterProducts(catalog?.products ?? [], {
     query, categorySlug, availableOnly, sort,
   }), [catalog, query, categorySlug, availableOnly, sort])
-  const bagSummary = useMemo(() => calculateBag(catalog?.products ?? [], quantities), [catalog, quantities])
+  const catalogProductIds = useMemo(() => (catalog?.products ?? []).map((product) => product.id), [catalog])
+  const currentBag = useMemo(() => bagForCatalog(quantities, catalogProductIds), [quantities, catalogProductIds])
+  const bagSummary = useMemo(() => calculateBag(catalog?.products ?? [], currentBag), [catalog, currentBag])
   const bagProducts = (catalog?.products ?? []).filter((product) => (quantities[product.id] ?? 0) > 0)
   const bagCount = bagProducts.reduce((total, product) => total + quantities[product.id], 0)
   const catalogEmpty = loadState === 'ready' && catalog?.products.length === 0
@@ -117,6 +116,9 @@ function App() {
   function changeQuantity(product: Product, next: number) {
     setQuantities((current) => setBagQuantity(current, product.id, next))
   }
+  function clearCurrentBag() {
+    setQuantities((current) => withoutCatalogBag(current, catalogProductIds))
+  }
   function beginCheckout() {
     if (!bagSummary.lines.length || bagSummary.error) return
     setSubmitError('')
@@ -129,7 +131,7 @@ function App() {
       setHistorySaved(saved)
       setOrdersPersisted(saved)
       return true
-    }, () => setQuantities({}))
+    }, clearCurrentBag)
     navigate('checkout')
   }
   async function placeDemoOrder(details: CheckoutDetails) {
@@ -147,6 +149,7 @@ function App() {
     }
   }
   function saveInventory(product: Product, priceInput: string, stockInput: string): string | null {
+    if (mode !== 'demo') return 'Backend inventory editing is unavailable. This catalogue is read only.'
     try {
       const next = updateInventoryItem(inventoryEditsRef.current, product, priceInput, stockInput)
       inventoryEditsRef.current = next
@@ -249,7 +252,7 @@ function App() {
             </article>
           })}</section>
           <div className="bag-summary" role="status" aria-live="polite"><span>Item subtotal</span><strong>{bagSummary.currency ? formatPrice((bagSummary.subtotalMinor / 100).toFixed(2), bagSummary.currency) : '—'}</strong></div>
-          {bagSummary.error && <div className="bag-error" role="alert"><p>{bagSummary.error} Update your bag before checkout.</p><button type="button" className="secondary-button" onClick={() => setQuantities({})}>Clear bag</button></div>}
+          {bagSummary.error && <div className="bag-error" role="alert"><p>{bagSummary.error} Update your bag before checkout.</p><button type="button" className="secondary-button" onClick={clearCurrentBag}>Clear bag</button></div>}
           <button type="button" className="primary-button bag-checkout-button" onClick={beginCheckout} disabled={Boolean(bagSummary.error)}>Continue to demo checkout <Icon name="arrow" size={18} /></button>
         </> : <div className="state-panel"><Icon name="bag" size={38} /><h2>Your bag is empty.</h2><p>Find something that fuels your next day.</p><button type="button" className="primary-button" onClick={() => openShop()}>Explore products <Icon name="arrow" size={18} /></button></div>}
       </div>}
@@ -260,7 +263,7 @@ function App() {
 
       {view === 'orders' && <DemoOrderHistoryPage orders={demoOrders} onBack={() => navigate('you')} onShop={() => openShop()} />}
 
-      {view === 'admin' && <AdminDashboard products={catalog?.products ?? []} orders={demoOrders} inventoryEdits={inventoryEdits} catalogState={loadState} catalogError={error} onRetryCatalog={retry} onSaveInventory={saveInventory} onUpdateOrderStatus={changeDemoOrderStatus} onExit={() => navigate('you')} persistenceNotice={!inventoryPersisted || !ordersPersisted ? 'Browser storage is unavailable. Recent admin changes will last only until this page is refreshed.' : ''} />}
+      {view === 'admin' && <AdminDashboard mode={mode} products={catalog?.products ?? []} orders={demoOrders} inventoryEdits={inventoryEdits} catalogState={loadState} catalogError={error} onRetryCatalog={retry} onSaveInventory={saveInventory} onUpdateOrderStatus={changeDemoOrderStatus} onExit={() => navigate('you')} persistenceNotice={(mode === 'demo' && !inventoryPersisted) || !ordersPersisted ? 'Browser storage is unavailable. Recent demo changes will last only until this page is refreshed.' : ''} />}
 
       {view === 'you' && <div className="page-wrap simple-page"><div className="page-top"><button className="back-button" type="button" onClick={() => navigate('home')} aria-label="Back to home"><Icon name="back" size={24} /></button></div><p className="eyebrow">YOUR PROTO</p><h1>You</h1><div className="state-panel account-panel"><Icon name="user" size={38} /><h2>Your account is coming to web.</h2><p>Sign in and real delivery tracking are not connected here. Your bag, saved products, and demo orders stay local to this browser when storage is available.</p><button type="button" className="primary-button" onClick={() => navigate('orders')}>View demo orders <Icon name="arrow" size={18} /></button><button type="button" className="secondary-button admin-entry-button" onClick={() => navigate('admin')}>Open demo admin</button></div><section className="saved-section"><h2>Saved products</h2>{loadState !== 'ready' ? catalogState : savedProducts.length ? <div className="product-grid">{savedProducts.map(card)}</div> : <p className="page-description">{catalogEmpty ? 'No products are available to save right now.' : 'Nothing saved yet. Tap the heart on a product to find it here.'}</p>}</section></div>}
     </main>

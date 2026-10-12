@@ -367,8 +367,15 @@ img{display:block;max-width:100%}
 .admin-stock-badge,.admin-catalog-badge,.admin-order-status{display:inline-flex;align-items:center;max-width:100%;padding:6px 8px;border:1px solid #3a4520;border-radius:7px;background:#202619;color:var(--lime);font-size:10px;font-weight:750;line-height:1.3}
 .admin-stock-low-stock{border-color:#665330;background:#292418;color:#f4c86f}
 .admin-stock-out-of-stock,.admin-catalog-badge.is-unavailable{border-color:#65413d;background:#2a1e1c;color:#efa99c}
+.admin-stock-unknown{border-color:var(--border);background:var(--elevated);color:var(--muted)}
 .admin-catalog-badge{border-color:var(--border);background:var(--elevated);color:var(--muted)}
 .admin-inventory-form{display:flex;min-width:0;flex-direction:column;gap:10px}
+.admin-live-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.admin-live-values>div{display:flex;min-width:0;flex-direction:column;gap:5px}
+.admin-live-values span{color:var(--muted);font-size:11px}
+.admin-live-values strong{overflow-wrap:anywhere;font-size:14px}
+.admin-live-values p{grid-column:1/-1;margin:0;color:var(--muted);font-size:10px;line-height:1.5}
+@media(max-width:450px){.admin-live-values{grid-template-columns:1fr}}
 .admin-edit-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .admin-save-line{display:flex;align-items:center;gap:12px;min-height:33px}
 .admin-save-line button,.admin-status-form button{min-height:33px;flex:none;padding:0 12px;border:0;border-radius:8px;background:var(--lime);color:var(--bg);font-size:11px;font-weight:800}

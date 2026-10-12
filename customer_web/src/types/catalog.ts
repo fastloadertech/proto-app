@@ -15,6 +15,7 @@ export type Product = {
   currency: string
   imageUrl: string | null
   available: boolean
+  stockQuantity?: number | null
   brand?: string
   weightLabel?: string
   badge?: string

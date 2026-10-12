@@ -1,43 +1,14 @@
 import { demoCatalog } from '../data/demoCatalog.ts'
 import type { Catalog, Category, Product } from '../types/catalog.ts'
+import { configuredApiOrigin, getJson, type ApiEnvironment } from './client.ts'
 
 export type CatalogMode = 'demo' | 'live'
+export type CatalogEnvironment = ApiEnvironment & { VITE_PROTO_CATALOG_MODE?: string }
 
-export function configuredCatalogMode(): CatalogMode {
-  const value = import.meta.env.VITE_PROTO_CATALOG_MODE || 'demo'
+export function configuredCatalogMode(env: CatalogEnvironment = import.meta.env): CatalogMode {
+  const value = env.VITE_PROTO_CATALOG_MODE?.trim() || (env.DEV && !env.PROD ? 'demo' : '')
   if (value === 'demo' || value === 'live') return value
-  throw new Error('VITE_PROTO_CATALOG_MODE must be demo or live.')
-}
-
-function apiBaseUrl(): string {
-  const configured = import.meta.env.VITE_PROTO_API_BASE_URL?.trim()
-  const value = configured || (import.meta.env.DEV ? 'http://localhost:3101' : '')
-  if (!value) throw new Error('Set VITE_PROTO_API_BASE_URL to use the live catalog in this build.')
-  const url = new URL(value)
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-    throw new Error('VITE_PROTO_API_BASE_URL must be a plain HTTP(S) origin.')
-  }
-  return url.origin
-}
-
-async function getJson(url: string, signal: AbortSignal): Promise<unknown> {
-  const timeout = AbortSignal.timeout(10000)
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.any([signal, timeout]),
-    })
-    if (!response.ok) throw new Error(`Catalog request failed (HTTP ${response.status}).`)
-    return await response.json()
-  } catch (error) {
-    if (signal.aborted) throw error
-    if (timeout.aborted) throw new Error('The catalog request timed out. Try again.')
-    if (error instanceof TypeError) {
-      throw new Error('Cannot reach the catalog. Check the backend address and browser CORS configuration.')
-    }
-    throw error
-  }
+  throw new Error('Set VITE_PROTO_CATALOG_MODE explicitly to demo or live for this build.')
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -70,9 +41,12 @@ function categoryFromApi(value: unknown): Category {
 function productFromApi(value: unknown): Product {
   const item = record(value)
   const price = text(item.price)
+  const stockQuantity = item.stockQuantity
   if (!/^\d+\.\d{2}$/.test(price) || typeof item.available !== 'boolean' ||
       (item.imageUrl !== null && typeof item.imageUrl !== 'string') ||
-      (item.description !== null && typeof item.description !== 'string')) {
+      (item.description !== null && typeof item.description !== 'string') ||
+      (stockQuantity !== undefined && stockQuantity !== null &&
+        (!Number.isSafeInteger(stockQuantity) || (stockQuantity as number) < 0))) {
     throw new Error('The catalog returned an unexpected product.')
   }
   return {
@@ -84,6 +58,7 @@ function productFromApi(value: unknown): Product {
     currency: text(item.currency),
     imageUrl: item.imageUrl,
     available: item.available,
+    ...(stockQuantity === undefined ? {} : { stockQuantity: stockQuantity as number | null }),
     category: categoryFromApi(item.category),
     createdAt: text(item.createdAt),
   }
@@ -99,12 +74,16 @@ export function parseCatalog(categoriesBody: unknown, productsBody: unknown): Ca
   return { categories, products }
 }
 
-export async function loadCatalog(mode: CatalogMode, signal: AbortSignal): Promise<Catalog> {
+export async function loadCatalog(
+  mode: CatalogMode,
+  signal: AbortSignal,
+  options: { env?: CatalogEnvironment; fetchImpl?: typeof fetch } = {},
+): Promise<Catalog> {
   if (mode === 'demo') return demoCatalog
-  const origin = apiBaseUrl()
+  const origin = configuredApiOrigin(options.env ?? import.meta.env)
   const [categories, products] = await Promise.all([
-    getJson(`${origin}/api/v1/catalog/categories`, signal),
-    getJson(`${origin}/api/v1/catalog/products?active=true&sort=newest`, signal),
+    getJson(`${origin}/api/v1/catalog/categories`, signal, options.fetchImpl),
+    getJson(`${origin}/api/v1/catalog/products?active=true&sort=newest`, signal, options.fetchImpl),
   ])
   return parseCatalog(categories, products)
 }

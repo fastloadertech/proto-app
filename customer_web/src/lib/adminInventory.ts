@@ -5,11 +5,12 @@ export const ADMIN_INVENTORY_STORAGE_KEY = 'proto:web:admin:inventory:v1'
 
 export type InventoryEdit = { price: string; stock: number }
 export type InventoryEdits = Record<string, InventoryEdit>
-export type InventoryStockStatus = 'in-stock' | 'low-stock' | 'out-of-stock'
+export type InventoryStockStatus = 'in-stock' | 'low-stock' | 'out-of-stock' | 'unknown'
+export type InventoryMode = 'demo' | 'live'
 export type InventoryRow = {
   product: Product
   price: string
-  stock: number
+  stock: number | null
   stockStatus: InventoryStockStatus
   catalogAvailable: boolean
 }
@@ -23,6 +24,7 @@ export type InventorySummary = {
   inStockProducts: number
   lowStockProducts: number
   outOfStockProducts: number
+  unknownStockProducts: number
 }
 
 const SCHEMA_VERSION = 1
@@ -128,21 +130,24 @@ function classifyStock(stock: number): InventoryStockStatus {
   return stock === 0 ? 'out-of-stock' : stock <= LOW_STOCK_LIMIT ? 'low-stock' : 'in-stock'
 }
 
-/** Demo stock starts at an explicit sample value; it is not supplied by the catalog API. */
-export function deriveInventoryRows(products: Product[], edits: InventoryEdits): InventoryRow[] {
-  const safeEdits = sanitizeInventoryEdits(edits)
+/** Demo edits are browser-only. Live rows reflect the read-only backend catalogue. */
+export function deriveInventoryRows(products: Product[], edits: InventoryEdits, mode: InventoryMode = 'demo'): InventoryRow[] {
+  const safeEdits = mode === 'demo' ? sanitizeInventoryEdits(edits) : {}
   const seen = new Set<string>()
   const rows: InventoryRow[] = []
   for (const product of products) {
     if (!isProductId(product?.id) || seen.has(product.id)) continue
     seen.add(product.id)
     const edit = safeEdits[product.id]
-    const stock = edit?.stock ?? (product.available ? 12 : 0)
+    const liveStock = product.stockQuantity
+    const stock = mode === 'live'
+      ? typeof liveStock === 'number' && Number.isSafeInteger(liveStock) && liveStock >= 0 ? liveStock : null
+      : edit?.stock ?? (product.available ? 12 : 0)
     rows.push({
       product,
-      price: edit?.price ?? product.price,
+      price: mode === 'live' ? product.price : edit?.price ?? product.price,
       stock,
-      stockStatus: classifyStock(stock),
+      stockStatus: stock === null ? 'unknown' : classifyStock(stock),
       catalogAvailable: product.available,
     })
   }
@@ -161,9 +166,10 @@ export function filterInventoryRows(rows: InventoryRow[], filters: InventoryFilt
 export function summarizeInventory(rows: InventoryRow[]): InventorySummary {
   return rows.reduce<InventorySummary>((summary, row) => {
     summary.totalProducts += 1
-    if (row.stock > 0) summary.inStockProducts += 1
+    if (row.stock !== null && row.stock > 0) summary.inStockProducts += 1
     if (row.stockStatus === 'low-stock') summary.lowStockProducts += 1
     if (row.stockStatus === 'out-of-stock') summary.outOfStockProducts += 1
+    if (row.stockStatus === 'unknown') summary.unknownStockProducts += 1
     return summary
-  }, { totalProducts: 0, inStockProducts: 0, lowStockProducts: 0, outOfStockProducts: 0 })
+  }, { totalProducts: 0, inStockProducts: 0, lowStockProducts: 0, outOfStockProducts: 0, unknownStockProducts: 0 })
 }

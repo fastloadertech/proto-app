@@ -34,7 +34,7 @@ test('sample inventory defaults are explicit and never mutate catalog products',
   assert.equal(whey.price, originalPrice)
   assert.equal(rows[0].product, whey)
   assert.deepEqual(summarizeInventory(rows), {
-    totalProducts: 2, inStockProducts: 1, lowStockProducts: 0, outOfStockProducts: 1,
+    totalProducts: 2, inStockProducts: 1, lowStockProducts: 0, outOfStockProducts: 1, unknownStockProducts: 0,
   })
 })
 
@@ -50,9 +50,47 @@ test('price and stock edits normalize values and classify low and out of stock',
     { price: '0.00', stockStatus: 'out-of-stock' },
   ])
   assert.deepEqual(summarizeInventory(rows), {
-    totalProducts: 2, inStockProducts: 1, lowStockProducts: 1, outOfStockProducts: 1,
+    totalProducts: 2, inStockProducts: 1, lowStockProducts: 1, outOfStockProducts: 1, unknownStockProducts: 0,
   })
   assert.equal(whey.price, '2499.00')
+})
+
+test('live inventory uses backend prices and stock, ignoring local demo edits', () => {
+  const backendProduct = { ...whey, price: '1899.00', stockQuantity: 4 }
+  const edits = updateInventoryItem({}, whey, '10.00', '99')
+  const liveRows = deriveInventoryRows([backendProduct], edits, 'live')
+  assert.deepEqual(liveRows.map(({ price, stock, stockStatus }) => ({ price, stock, stockStatus })), [
+    { price: '1899.00', stock: 4, stockStatus: 'low-stock' },
+  ])
+  assert.deepEqual(deriveInventoryRows([backendProduct], edits, 'demo').map(({ price, stock }) => ({ price, stock })), [
+    { price: '10.00', stock: 99 },
+  ])
+  assert.equal(backendProduct.price, '1899.00')
+  assert.equal(backendProduct.stockQuantity, 4)
+})
+
+test('live inventory marks untracked stock unknown without inventing demo quantities', () => {
+  const products = [
+    { ...whey, id: 'live-null', stockQuantity: null },
+    { ...whey, id: 'live-missing' },
+    { ...whey, id: 'live-out', stockQuantity: 0 },
+    { ...whey, id: 'live-low', stockQuantity: 2 },
+    { ...whey, id: 'live-in', stockQuantity: 20 },
+  ]
+  const rows = deriveInventoryRows(products, {}, 'live')
+  assert.deepEqual(rows.map(({ stock, stockStatus }) => ({ stock, stockStatus })), [
+    { stock: null, stockStatus: 'unknown' },
+    { stock: null, stockStatus: 'unknown' },
+    { stock: 0, stockStatus: 'out-of-stock' },
+    { stock: 2, stockStatus: 'low-stock' },
+    { stock: 20, stockStatus: 'in-stock' },
+  ])
+  assert.deepEqual(filterInventoryRows(rows, { query: '', categorySlug: 'all', stockStatus: 'unknown' }).map(({ product }) => product.id), [
+    'live-null', 'live-missing',
+  ])
+  assert.deepEqual(summarizeInventory(rows), {
+    totalProducts: 5, inStockProducts: 2, lowStockProducts: 1, outOfStockProducts: 1, unknownStockProducts: 2,
+  })
 })
 
 test('inventory rejects invalid, negative, and overflowing price or stock input', () => {

@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   BAG_STORAGE_KEY,
   FAVORITES_STORAGE_KEY,
+  bagForCatalog,
   getBrowserStorage,
   readBag,
   readFavorites,
@@ -10,6 +11,7 @@ import {
   sanitizeFavorites,
   writeBag,
   writeFavorites,
+  withoutCatalogBag,
 } from '../src/lib/persistence.ts'
 
 function memoryStorage() {
@@ -48,6 +50,18 @@ test('bag and favourites round trip through their versioned storage keys', () =>
   assert.deepEqual(JSON.parse(storage.values.get(BAG_STORAGE_KEY)), {
     version: 1, quantities: { 'demo-whey-isolate': 3, 'demo-plant-protein': 99 },
   })
+})
+
+test('catalogue mode changes hide other products without erasing their saved bag or favourites', () => {
+  const storage = memoryStorage()
+  const saved = { 'demo-whey': 2, 'backend-eggs': 3 }
+  assert.equal(writeBag(storage, saved), true)
+  assert.equal(writeFavorites(storage, ['demo-whey', 'backend-eggs']), true)
+  assert.deepEqual(bagForCatalog(readBag(storage), ['backend-eggs']), { 'backend-eggs': 3 })
+  assert.deepEqual(withoutCatalogBag(readBag(storage), ['backend-eggs']), { 'demo-whey': 2 })
+  assert.deepEqual(readBag(storage), saved)
+  assert.deepEqual(readFavorites(storage), ['demo-whey', 'backend-eggs'])
+  assert.deepEqual(bagForCatalog(withoutCatalogBag(readBag(storage), ['backend-eggs']), ['demo-whey']), { 'demo-whey': 2 })
 })
 
 test('missing, malformed, and outdated payloads restore empty state', () => {

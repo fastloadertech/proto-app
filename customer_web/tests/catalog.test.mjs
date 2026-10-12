@@ -38,7 +38,7 @@ test('backend DTO mapping retains decimal prices, nullable artwork, and availabi
   const product = { id: 'product-1', sku: 'EGGS-6', name: 'Farm Eggs', description: null, price: '119.00', currency: 'INR', imageUrl: null, stockQuantity: null, isActive: true, available: false, category, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }
   assert.deepEqual(parseCatalog([category], [product]), {
     categories: [{ id: 'category-1', slug: 'eggs', name: 'Eggs', description: null }],
-    products: [{ id: 'product-1', sku: 'EGGS-6', name: 'Farm Eggs', description: null, price: '119.00', currency: 'INR', imageUrl: null, available: false, category: { id: 'category-1', slug: 'eggs', name: 'Eggs', description: null }, createdAt: '2026-10-01T00:00:00Z' }],
+    products: [{ id: 'product-1', sku: 'EGGS-6', name: 'Farm Eggs', description: null, price: '119.00', currency: 'INR', imageUrl: null, available: false, stockQuantity: null, category: { id: 'category-1', slug: 'eggs', name: 'Eggs', description: null }, createdAt: '2026-10-01T00:00:00Z' }],
   })
 })
 

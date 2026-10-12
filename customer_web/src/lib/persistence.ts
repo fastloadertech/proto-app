@@ -47,6 +47,18 @@ export function sanitizeBag(value: unknown): Record<string, number> {
   return bag
 }
 
+/** Hide items absent from the current catalogue without deleting saved items from another catalogue mode. */
+export function bagForCatalog(bag: Record<string, number>, productIds: readonly string[]): Record<string, number> {
+  const ids = new Set(productIds)
+  return Object.fromEntries(Object.entries(sanitizeBag(bag)).filter(([id]) => ids.has(id)))
+}
+
+/** Checkout clears only the items it submitted, preserving items from another catalogue mode. */
+export function withoutCatalogBag(bag: Record<string, number>, productIds: readonly string[]): Record<string, number> {
+  const ids = new Set(productIds)
+  return Object.fromEntries(Object.entries(sanitizeBag(bag)).filter(([id]) => !ids.has(id)))
+}
+
 /** Keeps the first occurrence of each valid product ID. */
 export function sanitizeFavorites(value: unknown): string[] {
   if (!Array.isArray(value)) return []

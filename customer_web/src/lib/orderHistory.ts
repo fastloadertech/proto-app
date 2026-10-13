@@ -6,6 +6,21 @@ export const HISTORY_STORAGE_KEY = 'proto:web:demo-orders:v1'
 export const DEMO_ORDER_STATUSES = ['demo-confirmed', 'demo-reviewed', 'demo-archived'] as const
 export type DemoOrderStatus = typeof DEMO_ORDER_STATUSES[number]
 
+/** Customer-facing stages are a manual simulation, unrelated to fulfilment or admin annotations. */
+export const DEMO_SIMULATION_STAGES = ['placed', 'confirmed', 'preparing', 'ready', 'delivered'] as const
+export type DemoSimulationStage = typeof DEMO_SIMULATION_STAGES[number]
+
+export function demoSimulationStageLabel(stage: DemoSimulationStage): string {
+  switch (stage) {
+    case 'placed': return 'Placed'
+    case 'confirmed': return 'Confirmed'
+    case 'preparing': return 'Preparing'
+    case 'ready': return 'Ready for delivery'
+    case 'delivered': return 'Delivered'
+    default: throw new Error('Unsupported demo simulation stage.')
+  }
+}
+
 export function demoOrderStatusLabel(status: DemoOrderStatus): string {
   switch (status) {
     case 'demo-confirmed': return 'Demo confirmed'
@@ -19,9 +34,14 @@ function isDemoOrderStatus(value: unknown): value is DemoOrderStatus {
   return typeof value === 'string' && DEMO_ORDER_STATUSES.some((status) => status === value)
 }
 
+function isDemoSimulationStage(value: unknown): value is DemoSimulationStage {
+  return typeof value === 'string' && DEMO_SIMULATION_STAGES.some((stage) => stage === value)
+}
+
 export type DemoOrderHistoryEntry = {
   mode: 'local-demo'
   status: DemoOrderStatus
+  simulationStage: DemoSimulationStage
   reference: string
   createdAt: string
   currency: 'INR'
@@ -64,6 +84,9 @@ function cleanItem(value: unknown): DemoOrderItem | null {
 
 function cleanEntry(value: unknown): DemoOrderHistoryEntry | null {
   if (!record(value) || value.mode !== 'local-demo' || !isDemoOrderStatus(value.status) || value.currency !== 'INR') return null
+  // Existing v1 records predate the customer timeline; their first stage is Placed.
+  const simulationStage = value.simulationStage === undefined ? 'placed' : value.simulationStage
+  if (!isDemoSimulationStage(simulationStage)) return null
   const reference = cleanText(value.reference, 128)
   const createdAt = cleanText(value.createdAt, 40)
   if (!reference || !createdAt || !/^\d{4}-\d{2}-\d{2}T/.test(createdAt) || !Number.isFinite(Date.parse(createdAt))) return null
@@ -90,7 +113,7 @@ function cleanEntry(value: unknown): DemoOrderHistoryEntry | null {
   }
   if (Number(total) !== value.subtotalMinor || count !== value.count) return null
   return {
-    mode: 'local-demo', status: value.status, reference, createdAt, currency: 'INR',
+    mode: 'local-demo', status: value.status, simulationStage, reference, createdAt, currency: 'INR',
     subtotalMinor: Number(total), count, items, delivery: { city, state, pinCode },
   }
 }
@@ -118,6 +141,7 @@ export function toHistoryEntry(order: DemoOrder): DemoOrderHistoryEntry {
   const entry = cleanEntry({
     mode: order.mode,
     status: order.status,
+    simulationStage: 'placed',
     reference: order.reference,
     createdAt: order.createdAt,
     currency: order.currency,
@@ -132,6 +156,22 @@ export function toHistoryEntry(order: DemoOrder): DemoOrderHistoryEntry {
   })
   if (!entry) throw new Error('The demo order could not be added to local history.')
   return entry
+}
+
+/** Prepends a new local order without replacing an earlier reference. */
+export function appendDemoOrder(entries: DemoOrderHistoryEntry[], order: DemoOrder): DemoOrderHistoryEntry[] {
+  if (!Array.isArray(entries)) throw new Error('Demo order history is invalid.')
+  const entry = toHistoryEntry(order)
+  const existing: DemoOrderHistoryEntry[] = []
+  const references = new Set<string>()
+  for (const raw of entries) {
+    const valid = cleanEntry(raw)
+    if (!valid || references.has(valid.reference)) throw new Error('Demo order history contains an invalid record.')
+    if (valid.reference === entry.reference) throw new Error('Demo order reference already exists. Please try again.')
+    references.add(valid.reference)
+    existing.push(valid)
+  }
+  return [entry, ...existing].slice(0, MAX_HISTORY_ENTRIES)
 }
 
 /** Updates an admin annotation on a local demo record without changing its order snapshot. */
@@ -156,6 +196,30 @@ export function updateDemoOrderStatus(
       valid.status = status
     }
     return valid
+  })
+  if (!found) throw new Error('Demo order reference was not found.')
+  return updated
+}
+
+/** Advances exactly one step after a customer action; never starts real fulfilment. */
+export function advanceDemoSimulation(entries: DemoOrderHistoryEntry[], reference: string): DemoOrderHistoryEntry[] {
+  if (typeof reference !== 'string' || !reference || reference !== reference.trim() ||
+      reference.length > 128 || /[\u0000-\u001f\u007f]/.test(reference)) {
+    throw new Error('Enter a valid demo order reference.')
+  }
+  if (!Array.isArray(entries)) throw new Error('Demo order history is invalid.')
+
+  let found = false
+  const updated = entries.map((entry) => {
+    const valid = cleanEntry(entry)
+    if (!valid) throw new Error('Demo order history contains an invalid record.')
+    if (valid.reference !== reference) return valid
+    found = true
+    const currentIndex = DEMO_SIMULATION_STAGES.indexOf(valid.simulationStage)
+    if (currentIndex === DEMO_SIMULATION_STAGES.length - 1) {
+      throw new Error('This demo timeline is already complete.')
+    }
+    return { ...valid, simulationStage: DEMO_SIMULATION_STAGES[currentIndex + 1] }
   })
   if (!found) throw new Error('Demo order reference was not found.')
   return updated

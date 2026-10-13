@@ -4,8 +4,12 @@ import { demoCatalog } from '../src/data/demoCatalog.ts'
 import { calculateBag, createDemoOrder } from '../src/lib/checkout.ts'
 import {
   DEMO_ORDER_STATUSES,
+  DEMO_SIMULATION_STAGES,
   HISTORY_STORAGE_KEY,
+  appendDemoOrder,
+  advanceDemoSimulation,
   demoOrderStatusLabel,
+  demoSimulationStageLabel,
   readDemoOrders,
   toHistoryEntry,
   updateDemoOrderStatus,
@@ -32,6 +36,7 @@ function memoryStorage() {
 test('history entry and stored payload omit contact and full street address', () => {
   const entry = toHistoryEntry(order)
   assert.equal(entry.reference, order.reference)
+  assert.equal(entry.simulationStage, 'placed')
   assert.equal(entry.subtotalMinor, order.subtotalMinor)
   assert.deepEqual(entry.delivery, { city: 'Bengaluru', state: 'Karnataka', pinCode: '560038' })
   const storage = memoryStorage()
@@ -43,6 +48,74 @@ test('history entry and stored payload omit contact and full street address', ()
   assert.ok(!stored.includes('12 Main Road'))
   assert.ok(!stored.includes('Indiranagar'))
   assert.ok(!stored.includes('Alex Rao'))
+})
+
+test('appending a demo order snapshots it without replacing a reference or mutating history', () => {
+  const oldOrder = createDemoOrder(calculateBag([product], { [product.id]: 1 }), details, () => 'DEMO-OLD')
+  const oldEntry = toHistoryEntry(oldOrder)
+  const original = [oldEntry]
+  const next = appendDemoOrder(original, order)
+  assert.deepEqual(next.map((entry) => entry.reference), ['DEMO-HISTORY-1', 'DEMO-OLD'])
+  assert.notStrictEqual(next, original)
+  assert.notStrictEqual(next[1], oldEntry)
+  assert.deepEqual(original, [oldEntry])
+  assert.deepEqual(next[0].delivery, { city: 'Bengaluru', state: 'Karnataka', pinCode: '560038' })
+  assert.throws(() => appendDemoOrder(next, order), /reference already exists/)
+  assert.deepEqual(next.map((entry) => entry.reference), ['DEMO-HISTORY-1', 'DEMO-OLD'])
+  const many = Array.from({ length: 20 }, (_, index) => ({ ...oldEntry, reference: `DEMO-OLD-${index}` }))
+  const capped = appendDemoOrder(many, order)
+  assert.equal(capped.length, 20)
+  assert.equal(capped[0].reference, order.reference)
+  assert.equal(capped.at(-1).reference, 'DEMO-OLD-18')
+  assert.equal(many.length, 20)
+  assert.throws(() => appendDemoOrder([oldEntry, oldEntry], order), /invalid record/)
+})
+
+test('customer demo timeline advances one stage per action and persists without private address data', () => {
+  const initial = toHistoryEntry(order)
+  assert.deepEqual(DEMO_SIMULATION_STAGES, ['placed', 'confirmed', 'preparing', 'ready', 'delivered'])
+  assert.deepEqual(DEMO_SIMULATION_STAGES.map(demoSimulationStageLabel), [
+    'Placed', 'Confirmed', 'Preparing', 'Ready for delivery', 'Delivered',
+  ])
+  const storage = memoryStorage()
+  let entries = [initial]
+  for (const stage of DEMO_SIMULATION_STAGES.slice(1)) {
+    const previous = entries
+    entries = advanceDemoSimulation(entries, initial.reference)
+    assert.notStrictEqual(entries, previous)
+    assert.equal(entries[0].simulationStage, stage)
+    assert.equal(entries[0].status, 'demo-confirmed')
+    assert.deepEqual(entries[0].items, initial.items)
+    assert.deepEqual(entries[0].delivery, { city: 'Bengaluru', state: 'Karnataka', pinCode: '560038' })
+    assert.equal(writeDemoOrders(storage, entries), true)
+    entries = readDemoOrders(storage)
+    assert.equal(entries[0].simulationStage, stage)
+    const stored = storage.values.get(HISTORY_STORAGE_KEY)
+    assert.ok(!stored.includes(details.phone))
+    assert.ok(!stored.includes(details.addressLine1))
+  }
+  assert.equal(initial.simulationStage, 'placed')
+  assert.throws(() => advanceDemoSimulation(entries, initial.reference), /already complete/)
+  const annotated = updateDemoOrderStatus(entries, initial.reference, 'demo-reviewed')
+  assert.equal(annotated[0].simulationStage, 'delivered')
+  assert.equal(annotated[0].status, 'demo-reviewed')
+})
+
+test('customer timeline rejects invalid records and references without advancing', () => {
+  const entry = toHistoryEntry(order)
+  assert.throws(() => advanceDemoSimulation([entry], 'UNKNOWN'), /reference was not found/)
+  assert.throws(() => advanceDemoSimulation([entry], ` ${entry.reference}`), /valid demo order reference/)
+  assert.throws(() => advanceDemoSimulation([{ ...entry, simulationStage: 'shipped' }], entry.reference), /invalid record/)
+  assert.equal(entry.simulationStage, 'placed')
+})
+
+test('previous v1 records load at Placed while malformed stages are discarded', () => {
+  const storage = memoryStorage()
+  const { simulationStage, ...legacy } = toHistoryEntry(order)
+  storage.setItem(HISTORY_STORAGE_KEY, JSON.stringify({ version: 1, orders: [
+    legacy, { ...legacy, reference: 'DEMO-BAD-STAGE', simulationStage: 'in-transit' },
+  ] }))
+  assert.deepEqual(readDemoOrders(storage), [{ ...legacy, simulationStage: 'placed' }])
 })
 
 test('demo status changes preserve the order and survive storage reload', () => {

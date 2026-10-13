@@ -50,6 +50,16 @@ export type DemoOrder = {
   delivery: CheckoutDetails
 }
 
+/** An illustrative fee only; no serviceability or live delivery price is calculated. */
+export const DEMO_DELIVERY_FEE_MINOR = 0
+
+export function demoOrderTotalMinor(subtotalMinor: number): number {
+  if (!Number.isSafeInteger(subtotalMinor) || subtotalMinor < 0) throw new Error('Invalid demo item subtotal.')
+  const total = subtotalMinor + DEMO_DELIVERY_FEE_MINOR
+  if (!Number.isSafeInteger(total)) throw new Error('Invalid demo total.')
+  return total
+}
+
 const MAX_QUANTITY = 99
 const MAX_SAFE_MINOR = BigInt(Number.MAX_SAFE_INTEGER)
 const PRICE_PATTERN = /^(?:0|[1-9]\d*)\.\d{2}$/

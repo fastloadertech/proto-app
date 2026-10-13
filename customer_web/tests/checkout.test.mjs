@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { demoCatalog } from '../src/data/demoCatalog.ts'
 import {
+  DEMO_DELIVERY_FEE_MINOR,
   calculateBag,
   createDemoOrder,
   createDemoSubmitController,
+  demoOrderTotalMinor,
   setBagQuantity,
   validateCheckoutDetails,
 } from '../src/lib/checkout.ts'
@@ -38,6 +40,8 @@ test('bag subtotal uses exact minor units and ignores removed zero entries', () 
   assert.equal(summary.currency, 'INR')
   assert.equal(summary.count, 3)
   assert.equal(summary.subtotalMinor, 679700)
+  assert.equal(DEMO_DELIVERY_FEE_MINOR, 0)
+  assert.equal(demoOrderTotalMinor(summary.subtotalMinor), 679700)
   assert.deepEqual(summary.lines.map(({ quantity, unitMinor, lineMinor }) => ({ quantity, unitMinor, lineMinor })), [
     { quantity: 2, unitMinor: 249900, lineMinor: 499800 },
     { quantity: 1, unitMinor: 179900, lineMinor: 179900 },
@@ -48,6 +52,12 @@ test('bag subtotal uses exact minor units and ignores removed zero entries', () 
   assert.equal(tenths.subtotalMinor, 30)
   assert.ok(calculateBag([whey], {}).error)
   assert.deepEqual(calculateBag([whey], {}).lines, [])
+})
+
+test('demo total rejects invalid money instead of displaying a false total', () => {
+  for (const invalid of [-1, 0.1, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => demoOrderTotalMinor(invalid), /Invalid demo item subtotal/)
+  }
 })
 
 test('bag rejects invalid quantity, unavailable or missing products, bad prices, and currency problems', () => {
